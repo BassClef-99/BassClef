@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f4eedf">
+  <title>German Verb Trainer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Kalam:wght@400;700&family=DM+Sans:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="settingsBackdrop" class="settings-backdrop" hidden></div>
+  <aside id="settingsPanel" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true" tabindex="-1">
+    <div class="settings-top"><div><p class="eyebrow">PERSONALISE YOUR STUDY</p><h2 id="settingsTitle">Settings</h2></div><button id="closeSettings" class="settings-close" type="button" aria-label="Close settings">×</button></div>
+    <div class="settings-scroll">
+      <section class="settings-section"><h3>Appearance</h3><p>Choose how your notebook looks.</p>      <label class="theme-picker"><span class="language-label">Theme</span><select id="themeSelect" aria-label="Choose theme"><option value="notebook">Notebook</option><option value="dark">Midnight</option><option value="ocean">Ocean</option><option value="rose">Rose</option><option value="minimal">Minimal</option></select></label>
+</section>
+      <section class="settings-section"><h3>Language</h3><p>Change the interface and verb meanings.</p>      <label class="language-picker"><span class="language-label">Language</span><select id="interfaceLanguage" aria-label="Interface language"><option value="en">English</option><option value="ar">العربية</option><option value="kab">Taqbaylit</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="es">Español</option><option value="it">Italiano</option><option value="pt">Português</option><option value="tr">Türkçe</option><option value="nl">Nederlands</option><option value="ru">Русский</option></select></label></section>
+      <section id="practiceEditSettings" class="settings-section" hidden><h3>Practice</h3><p>Adjust your exercises during a session.</p><div class="settings-actions"><button id="editVerbs" type="button">Edit verbs</button><button id="editTenses" type="button">Edit tenses</button><button id="editPronouns" type="button">Edit pronouns</button></div></section>
+      <section class="settings-section"><h3>Writing</h3><label class="settings-switch"><span>Show German character keyboard</span><input id="settingKeyboard" type="checkbox" checked></label><label class="settings-switch"><span>Large answer text</span><input id="settingLargeText" type="checkbox"></label></section>
+      <section class="settings-section"><h3>Preferences</h3><button id="resetSettings" class="settings-reset" type="button">Restore default settings</button></section>
+    </div>
+  </aside>
+
+  <main class="app">
+    <header class="site-header">
+      <div class="brand-mark" aria-hidden="true">DE</div>
+      <div>
+        <p class="eyebrow">YOUR GERMAN STUDY NOTEBOOK</p>
+        <h1>German Verb Trainer</h1>
+        <p class="header-subtitle">A little practice every day makes progress.</p>
+      </div>
+      <label class="header-language" aria-label="Quick language selection"><svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c-3 3-4 6-4 9s1 6 4 9M12 3c3 3 4 6 4 9s-1 6-4 9"/></svg><select id="quickLanguage" aria-label="Language"><option value="en">EN</option><option value="ar">AR</option><option value="kab">KAB</option><option value="fr">FR</option><option value="de">DE</option><option value="es">ES</option><option value="it">IT</option><option value="pt">PT</option><option value="tr">TR</option><option value="nl">NL</option><option value="ru">RU</option></select></label>
+      <button id="openSettings" class="settings-trigger" type="button" aria-controls="settingsPanel" aria-expanded="false" aria-label="Open settings"><svg class="header-icon menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+    </header>
+
+    <section id="page1" class="page">
+      <div class="step-heading">
+        <span class="step-number">01</span>
+        <div><p class="eyebrow">GET STARTED</p><h2>Choose your level</h2></div>
+      </div>
+      <div class="levels">
+        <button class="level active" data-level="A1">A1</button>
+        <button class="level" data-level="A2">A2</button>
+        <button class="level" data-level="B1">B1</button>
+        <button class="level" data-level="B2">B2</button>
+        <button class="level" data-level="C1">C1</button>
+        <button class="level" data-level="C2">C2</button>
+      </div>
+
+      <div class="section-heading">
+        <div><p class="eyebrow">YOUR VOCABULARY</p><h3>Available verbs</h3></div>
+        <span class="hint">Select the verbs you want to practise</span>
+      </div>
+      <div id="verbList" class="verb-list"></div>
+
+      <button id="addList" class="secondary">＋ Create my own list</button>
+
+      <div id="customListForm" class="custom-list-form hidden">
+        <input id="customListName" class="custom-input" placeholder="Enter your list name">
+        <button id="createList">Create list</button>
+        <button id="cancelCreateList" class="remove">Cancel</button>
+      </div>
+
+      <div id="customLists"></div>
+      <button id="toPage2" class="main-btn">Continue <span>→</span></button>
+    </section>
+
+    <section id="customPage" class="page hidden">
+      <button class="back" onclick="showPage(1)">← Back to lists</button><button class="back home-nav" onclick="showPage(1)">⌂ Home</button>
+      <div class="step-heading">
+        <span class="step-number">✦</span>
+        <div><p class="eyebrow">PERSONALISE</p><h2 id="customPageTitle">Configure your list</h2></div>
+      </div>
+      <h3>Choose verbs from the available levels</h3>
+      <p id="customVerbCount" class="muted">0 verbs selected</p>
+      <div id="customVerbChoices"></div>
+
+      <h3>Choose tenses</h3>
+      <div id="customTenseChoices" class="tense-list"></div>
+
+      <h3>Choose pronouns</h3>
+      <div id="customPronounChoices" class="tense-list"></div>
+
+      <button id="startCustomPractice" class="main-btn">Start practice <span>→</span></button>
+    </section>
+
+    <section id="page2" class="page hidden">
+      <button class="back" onclick="showPage(1)">← Back</button>
+      <div class="step-heading">
+        <span class="step-number">02</span>
+        <div><p class="eyebrow">PRACTICE SETTINGS</p><h2>Choose your tenses</h2></div>
+      </div>
+      <p class="muted">Choose which German tenses you want to work on.</p>
+      <div id="tenseList" class="tense-list"></div>
+      <button id="toPage3" class="main-btn">Start conjugating <span>→</span></button>
+    </section>
+
+    <section id="page3" class="page hidden">
+      <button class="back" onclick="showPage(practiceBackDestination)">← Back</button><button class="back home-nav" onclick="showPage(1)">⌂ Home</button>
+      <div class="step-heading">
+        <span class="step-number">03</span>
+        <div><p class="eyebrow">YOUR SESSION</p><h2>Conjugation practice</h2></div>
+      </div>
+
+
+      <p id="verbProgress"></p>
+      <div class="special-letters" id="specialLetters" aria-label="German special characters">
+        <span id="keyboardTitle" class="toolbar-label">German letters</span>
+        <div id="keyboardKeys" class="keyboard-keys"></div>
+        <button id="expandKeyboard" type="button" class="keyboard-expand" aria-expanded="false">More letters ⌄</button>
+      </div>
+      <div id="exercise"></div>
+
+      <div class="actions" id="answerActions">
+        <button id="checkAll" class="main-btn">Check answers</button>
+        <button id="reset" class="secondary">Reset answers</button>
+      </div>
+
+      <div id="result"></div><div id="handwrittenMotivation" class="handwritten-motivation hidden" aria-live="polite"></div>
+
+      <div id="verbNavigation" class="verb-navigation hidden">
+        <button id="redoVerb">↻ Redo this verb</button>
+        <button id="nextVerb">Next verb →</button>
+      </div>
+    </section>
+    <footer class="site-footer">GERMAN VERB TRAINER <span>·</span> Learn at your own pace</footer>
+  </main>
+
+  <div id="siteDialog" class="dialog-overlay hidden">
+    <div class="site-dialog" role="dialog" aria-modal="true" aria-labelledby="siteDialogTitle">
+      <div class="dialog-icon" aria-hidden="true">DE</div>
+      <h2 id="siteDialogTitle">Message</h2>
+      <p id="siteDialogMessage"></p>
+      <input id="siteDialogInput" class="custom-input hidden" autocomplete="off">
+      <div id="siteDialogChoices" class="dialog-choices hidden"></div>
+      <div id="siteDialogButtons" class="dialog-buttons"></div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
