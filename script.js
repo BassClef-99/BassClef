@@ -2096,8 +2096,30 @@ conjugate = function(verb, tense, person) {
  const trigger=document.getElementById('openSettings');
  const close=document.getElementById('closeSettings');
  let previousFocus=null;
- function open(){previousFocus=document.activeElement;backdrop.hidden=false;panel.classList.add('is-open');panel.setAttribute('aria-hidden','false');trigger.setAttribute('aria-expanded','true');document.body.classList.add('settings-open');close.focus();}
- function dismiss(){panel.classList.remove('is-open');panel.setAttribute('aria-hidden','true');trigger.setAttribute('aria-expanded','false');document.body.classList.remove('settings-open');backdrop.hidden=true;previousFocus?.focus();}
+ let isOpen=false;
+ panel.inert=true;
+ function open(){
+   if(isOpen)return;
+   isOpen=true;previousFocus=document.activeElement;
+   panel.inert=false;
+   panel.setAttribute('aria-hidden','false');
+   trigger.setAttribute('aria-expanded','true');
+   backdrop.classList.add('is-open');
+   panel.classList.add('is-open');
+   document.body.classList.add('settings-open');
+   requestAnimationFrame(()=>{if(isOpen)close.focus({preventScroll:true});});
+ }
+ function dismiss(){
+   if(!isOpen)return;
+   isOpen=false;
+   panel.classList.remove('is-open');
+   backdrop.classList.remove('is-open');
+   trigger.setAttribute('aria-expanded','false');
+   panel.setAttribute('aria-hidden','true');
+   panel.inert=true;
+   document.body.classList.remove('settings-open');
+   requestAnimationFrame(()=>previousFocus?.focus({preventScroll:true}));
+ }
  trigger.addEventListener('click',open);close.addEventListener('click',dismiss);backdrop.addEventListener('click',dismiss);
  document.addEventListener('keydown',e=>{if(!panel.classList.contains('is-open'))return;if(e.key==='Escape'){dismiss();return;}if(e.key==='Tab'){const els=[...panel.querySelectorAll('button,select,input')].filter(el=>!el.disabled);const first=els[0],last=els[els.length-1];if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
  ['editVerbs','editTenses','editPronouns'].forEach(id=>document.getElementById(id).addEventListener('click',dismiss));
@@ -2582,49 +2604,94 @@ document.getElementById('checkAll').onclick = checkCurrentVerb;
   }
   const bugReportForm=document.getElementById('bugReportForm');
   const bugSendButton=document.getElementById('emailBugReport');
+  const fallbackSendButton=document.getElementById('bugFallbackSubmit');
   let bugSending=false;
+  function setBugStatus(message){status.textContent=textFor(message);}
+  function showFallback(){fallbackSendButton.hidden=false;}
+  function createReportPayload(){
+    return new URLSearchParams({
+      _subject:'German Verb Trainer — '+category.value+' bug',
+      _template:'table',
+      _captcha:'false',
+      _url:window.location.href,
+      category:category.value,
+      message:formatBugReport()
+    });
+  }
   bugReportForm.addEventListener('submit',async(event)=>{
     event.preventDefault();
     if(bugSending || !validateReport())return;
+    fallbackSendButton.hidden=true;
     if(!/^https?:$/.test(window.location.protocol)){
-      status.textContent=textFor('Publish the website online to enable direct bug reports.');
+      setBugStatus('Open the published website (not an HTML file) to send reports.');
       return;
     }
     bugSending=true;
     bugSendButton.disabled=true;
     const originalButtonLabel=bugSendButton.textContent;
     bugSendButton.textContent=textFor('Sending…');
-    status.textContent=textFor('Sending…');
+    setBugStatus('Sending…');
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),18000);
     try{
-      const report=formatBugReport();
+      // A regular URL-encoded POST avoids the JSON/CORS preflight that can fail
+      // on some hosts. Keep the report on this page if the endpoint responds.
       const response=await fetch('https://formsubmit.co/ajax/contact@studyzone.tech',{
         method:'POST',
-        headers:{'Content-Type':'application/json','Accept':'application/json'},
-        body:JSON.stringify({
-          _subject:'German Verb Trainer — '+category.value+' bug',
-          _template:'table',
-          _url:window.location.href,
-          _honey:'',
-          category:category.value,
-          message:report
-        })
+        headers:{'Accept':'application/json'},
+        body:createReportPayload(),
+        signal:controller.signal
       });
+      const data=await response.json().catch(()=>null);
       if(!response.ok)throw new Error('HTTP '+response.status);
-      const data=await response.json();
-      if(data.success!==true && data.success!=='true'){
-        throw new Error(data.message||'Submission rejected');
+      // FormSubmit sends the *strings* 'true' and 'false', both are truthy.
+      if(!data || (data.success!==true && data.success!=='true')){
+        const reason=String(data?.message||'').trim();
+        if(/activat|confirm.*email/i.test(reason)){
+          setBugStatus('Inbox activation required: check contact@studyzone.tech for the FormSubmit activation email, then try again.');
+          return;
+        }
+        if(/web server|browsed as html|referer/i.test(reason)){
+          setBugStatus('FormSubmit requires an online website. Publish the site and retry.');
+          return;
+        }
+        throw new Error(reason||'Submission rejected by FormSubmit');
       }
-      status.textContent=textFor('Report submitted for delivery to contact@studyzone.tech.');
-      description.value='';
-      steps.value='';
+      setBugStatus('Report submitted for delivery to contact@studyzone.tech.');
+      description.value='';steps.value='';
     }catch(error){
       console.error('Bug report submission failed:',error);
-      status.textContent=textFor('Could not send the report. Try again, or copy the report.');
+      if(error.name==='AbortError'){
+        setBugStatus('The request timed out. You can retry or use the secure form.');
+      }else{
+        setBugStatus('Direct sending failed. Use the secure form below (no email login needed).');
+      }
+      showFallback();
     }finally{
-      bugSending=false;
-      bugSendButton.disabled=false;
+      clearTimeout(timeout);
+      bugSending=false;bugSendButton.disabled=false;
       bugSendButton.textContent=originalButtonLabel;
     }
+  });
+  fallbackSendButton.addEventListener('click',()=>{
+    if(!validateReport())return;
+    if(!/^https?:$/.test(window.location.protocol)){
+      setBugStatus('Open the published website (not an HTML file) to send reports.');
+      return;
+    }
+    // Native HTML POST works even if cross-origin JavaScript requests are blocked.
+    // It opens FormSubmit's response in a new tab instead of requiring email login.
+    const form=document.createElement('form');
+    form.method='POST';form.action='https://formsubmit.co/contact@studyzone.tech';
+    form.target='_blank';form.style.display='none';
+    for(const [key,value] of createReportPayload()){
+      const input=document.createElement('input');
+      input.type='hidden';input.name=key;input.value=value;form.append(input);
+    }
+    document.body.append(form);
+    HTMLFormElement.prototype.submit.call(form);
+    form.remove();
+    setBugStatus('Check the newly opened FormSubmit page to confirm the result.');
   });
   document.getElementById('copyBugReport').addEventListener('click',async()=>{
     if(!validateReport())return;
@@ -2687,3 +2754,23 @@ Object.assign(UI_LANGUAGES, {
   'Email draft opened. Choose a recipient and send it.':{ar:'تم طلب فتح مسودة بريد. اختر المستلم وأرسلها.',fr:'Ouverture du brouillon demandée. Choisissez un destinataire et envoyez-le.',de:'E-Mail-Entwurf angefordert. Empfänger auswählen und senden.',es:'Se ha solicitado abrir el borrador. Elige destinatario y envíalo.'}
 });
 uiTranslateTree(document.body);
+
+// Additional reporting-status translations.
+Object.assign(UI_LANGUAGES, {
+ 'Inbox activation required: check contact@studyzone.tech for the FormSubmit activation email, then try again.': {
+  ar:'يلزم تفعيل العنوان: افتح بريد contact@studyzone.tech وأكّد رسالة FormSubmit ثم أعد المحاولة.',
+  fr:'Activation requise : confirmez le lien FormSubmit envoyé à contact@studyzone.tech, puis réessayez.',
+  de:'Aktivierung nötig: Den FormSubmit-Link im Postfach contact@studyzone.tech bestätigen und erneut senden.',
+  es:'Activación necesaria: confirma el correo de FormSubmit en contact@studyzone.tech y vuelve a intentarlo.'},
+ 'Direct sending failed. Use the secure form below (no email login needed).': {
+  ar:'تعذّر الإرسال المباشر. استخدم النموذج الآمن أدناه دون تسجيل الدخول للبريد.',
+  fr:'Envoi direct impossible. Utilisez le formulaire sécurisé ci-dessous, sans connexion e-mail.',
+  de:'Direktversand fehlgeschlagen. Nutze das sichere Formular unten, ohne E-Mail-Anmeldung.',
+  es:'Falló el envío directo. Usa el formulario seguro de abajo, sin iniciar sesión en el correo.'},
+ 'Send via secure form': {ar:'إرسال عبر نموذج آمن',fr:'Envoyer via le formulaire sécurisé',de:'Über sicheres Formular senden',es:'Enviar mediante formulario seguro'},
+ 'Check the newly opened FormSubmit page to confirm the result.': {
+  ar:'تحقّق من صفحة FormSubmit التي فُتحت لتأكيد نتيجة الإرسال.',
+  fr:'Vérifiez la page FormSubmit ouverte pour confirmer le résultat.',
+  de:'Prüfe die geöffnete FormSubmit-Seite, um den Versand zu bestätigen.',
+  es:'Revisa la página FormSubmit abierta para confirmar el envío.'}
+});

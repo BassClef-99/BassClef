@@ -1215,3 +1215,42 @@ html[dir='rtl'] .practice-toast{right:auto;left:20px}
 #customPage.practice-list-mode #customVerbLevelHeading,
 #customPage.practice-list-mode #customVerbCount,
 #customPage.practice-list-mode #customVerbChoices { display:none!important; }
+
+/* Lightweight, composited settings drawer: fast open, fluid navigation. */
+html{scrollbar-gutter:stable}
+.settings-backdrop{
+  display:block!important;
+  opacity:0;visibility:hidden;pointer-events:none;
+  background:rgba(15,24,27,.36);
+  backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+  transition:opacity .18s ease-out,visibility 0s linear .18s;
+}
+.settings-backdrop.is-open{
+  opacity:1;visibility:visible;pointer-events:auto;
+  transition:opacity .18s ease-out,visibility 0s;
+}
+.settings-panel{
+  transform:translate3d(-101%,0,0);
+  visibility:hidden;pointer-events:none;
+  will-change:transform;backface-visibility:hidden;
+  box-shadow:7px 0 24px rgba(0,0,0,.12);
+  transition:transform .19s cubic-bezier(.2,.75,.2,1),visibility 0s linear .19s;
+}
+.settings-panel.is-open{
+  transform:translate3d(0,0,0);
+  visibility:visible;pointer-events:auto;
+  transition:transform .19s cubic-bezier(.2,.75,.2,1),visibility 0s;
+}
+.settings-scroll{
+  min-height:0;overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+}
+.settings-top{background:var(--paper)}
+.settings-actions button:hover,.settings-reset:hover{transform:none}
+@media(prefers-reduced-motion:reduce){
+ .settings-backdrop,.settings-backdrop.is-open,.settings-panel,.settings-panel.is-open{transition:none}
+}
+.bug-fallback-submit[hidden]{display:none!important}
+.bug-fallback-submit{align-self:flex-start;margin:2px 0 6px;padding:9px 13px;border:1px solid var(--line);border-radius:9px;background:var(--paper2);color:var(--ink);font:700 12px 'DM Sans',sans-serif;cursor:pointer}
+.settings-panel .settings-top h2,
+.settings-panel .settings-section h3{color:var(--ink)}

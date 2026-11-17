@@ -12,7 +12,7 @@
 </head>
 <body>
 
-  <div id="settingsBackdrop" class="settings-backdrop" hidden></div>
+  <div id="settingsBackdrop" class="settings-backdrop" aria-hidden="true"></div>
   <aside id="settingsPanel" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" aria-hidden="true" tabindex="-1">
     <div class="settings-top"><div><p class="eyebrow">PERSONALISE YOUR STUDY</p><h2 id="settingsTitle">Settings</h2></div><button id="closeSettings" class="settings-close" type="button" aria-label="Close settings">×</button></div>
     <div class="settings-scroll">
@@ -168,7 +168,7 @@
         <button id="closeBugReport" class="settings-close" type="button" aria-label="Close bug report">×</button>
       </div>
       <p id="bugReportHelp">Send a bug report directly to the support team without opening an email app.</p>
-      <form id="bugReportForm" action="https://formsubmit.co/ajax/contact@studyzone.tech" method="POST">
+      <form id="bugReportForm" action="https://formsubmit.co/contact@studyzone.tech" method="POST">
         <label for="bugCategory">Type of issue</label>
         <select id="bugCategory" class="custom-input">
           <option value="Conjugation">Conjugation</option>
@@ -182,6 +182,7 @@
         <textarea id="bugSteps" class="custom-input" rows="3" maxlength="2500" placeholder="Steps to reproduce the problem..."></textarea>
         <p class="report-note">Reports include the current verb, tense and app language. Sent to contact@studyzone.tech only when you press Send report.</p>
         <p id="bugReportStatus" class="bug-report-status" role="status" aria-live="polite"></p>
+        <button id="bugFallbackSubmit" class="bug-fallback-submit secondary" type="button" hidden>Send via secure form</button>
         <div class="dialog-buttons">
           <button id="copyBugReport" class="secondary" type="button">Copy report</button>
           <button id="emailBugReport" class="dialog-ok" type="submit">Send report</button>
