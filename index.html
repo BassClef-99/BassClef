@@ -9,7 +9,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Kalam:wght@400;700&family=DM+Sans:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" type="image/png" href="favicon.png">
 </head>
 <body>
 
@@ -22,6 +21,11 @@
       <section class="settings-section"><h3>Language</h3><p>Change the interface and verb meanings.</p>      <label class="language-picker"><span class="language-label">Language</span><select id="interfaceLanguage" aria-label="Interface language"><option value="en">English</option><option value="ar">العربية</option><option value="kab">Taqbaylit</option><option value="fr">Français</option><option value="de">Deutsch</option><option value="es">Español</option><option value="it">Italiano</option><option value="pt">Português</option><option value="tr">Türkçe</option><option value="nl">Nederlands</option><option value="ru">Русский</option></select></label></section>
       <section id="practiceEditSettings" class="settings-section" hidden><h3>Practice</h3><p>Adjust your exercises during a session.</p><div class="settings-actions"><button id="editVerbs" type="button">Edit verbs</button><button id="editTenses" type="button">Edit tenses</button><button id="editPronouns" type="button">Edit pronouns</button></div></section>
       <section class="settings-section"><h3>Writing</h3><label class="settings-switch"><span>Show German character keyboard</span><input id="settingKeyboard" type="checkbox" checked></label><label class="settings-switch"><span>Large answer text</span><input id="settingLargeText" type="checkbox"></label></section>
+      <section class="settings-section">
+        <h3>Help &amp; feedback</h3>
+        <p>Found a problem with a verb, translation or the website?</p>
+        <button id="openBugReport" class="settings-reset" type="button">Report a bug</button>
+      </section>
       <section class="settings-section"><h3>Preferences</h3><button id="resetSettings" class="settings-reset" type="button">Restore default settings</button></section>
     </div>
   </aside>
@@ -58,6 +62,8 @@
       </div>
       <div id="verbList" class="verb-list"></div>
 
+      <div id="customLists" aria-label="Your saved verb lists"></div>
+
       <button id="addList" class="secondary">＋ Create my own list</button>
 
       <div id="customListForm" class="custom-list-form hidden">
@@ -66,7 +72,6 @@
         <button id="cancelCreateList" class="remove">Cancel</button>
       </div>
 
-      <div id="customLists"></div>
       <button id="toPage2" class="main-btn">Continue <span>→</span></button>
     </section>
 
@@ -76,7 +81,19 @@
         <span class="step-number">✦</span>
         <div><p class="eyebrow">PERSONALISE</p><h2 id="customPageTitle">Configure your list</h2></div>
       </div>
-      <h3>Choose verbs from the available levels</h3>
+      <section id="practiceListManager" class="practice-list-manager hidden" aria-label="Practice list manager">
+        <h3>Your Practice list</h3>
+        <p class="muted">Any verb you get wrong is saved here automatically. Add or remove verbs whenever you like.</p>
+        <label for="practiceVerbInput">Add a verb</label>
+        <div class="practice-add-row">
+          <input id="practiceVerbInput" class="custom-input" type="text" list="practiceVerbOptions" placeholder="Search for a German verb" autocomplete="off">
+          <datalist id="practiceVerbOptions"></datalist>
+          <button id="practiceAddVerb" type="button">＋ Add</button>
+        </div>
+        <p id="practiceInputMessage" class="practice-input-message" role="status"></p>
+        <div id="practiceSelectedVerbs" class="practice-selected-verbs" aria-label="Saved practice verbs"></div>
+      </section>
+      <h3 id="customVerbLevelHeading">Choose verbs from the available levels</h3>
       <p id="customVerbCount" class="muted">0 verbs selected</p>
       <div id="customVerbChoices"></div>
 
@@ -139,6 +156,37 @@
       <input id="siteDialogInput" class="custom-input hidden" autocomplete="off">
       <div id="siteDialogChoices" class="dialog-choices hidden"></div>
       <div id="siteDialogButtons" class="dialog-buttons"></div>
+    </div>
+  </div>
+
+  <div id="practiceToast" class="practice-toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+
+  <div id="bugReportDialog" class="dialog-overlay hidden" aria-hidden="true">
+    <div class="site-dialog bug-report-dialog" role="dialog" aria-modal="true" aria-labelledby="bugReportTitle" aria-describedby="bugReportHelp">
+      <div class="bug-report-heading">
+        <h2 id="bugReportTitle">Report a bug</h2>
+        <button id="closeBugReport" class="settings-close" type="button" aria-label="Close bug report">×</button>
+      </div>
+      <p id="bugReportHelp">Send a bug report directly to the support team without opening an email app.</p>
+      <form id="bugReportForm" action="https://formsubmit.co/ajax/contact@studyzone.tech" method="POST">
+        <label for="bugCategory">Type of issue</label>
+        <select id="bugCategory" class="custom-input">
+          <option value="Conjugation">Conjugation</option>
+          <option value="Translation or pronunciation">Translation or pronunciation</option>
+          <option value="Design or controls">Design or controls</option>
+          <option value="Other">Other</option>
+        </select>
+        <label for="bugDescription">What went wrong?</label>
+        <textarea id="bugDescription" class="custom-input" rows="4" maxlength="4000" placeholder="Describe the bug..." required></textarea>
+        <label for="bugSteps">How can we reproduce it? (optional)</label>
+        <textarea id="bugSteps" class="custom-input" rows="3" maxlength="2500" placeholder="Steps to reproduce the problem..."></textarea>
+        <p class="report-note">Reports include the current verb, tense and app language. Sent to contact@studyzone.tech only when you press Send report.</p>
+        <p id="bugReportStatus" class="bug-report-status" role="status" aria-live="polite"></p>
+        <div class="dialog-buttons">
+          <button id="copyBugReport" class="secondary" type="button">Copy report</button>
+          <button id="emailBugReport" class="dialog-ok" type="submit">Send report</button>
+        </div>
+      </form>
     </div>
   </div>
 

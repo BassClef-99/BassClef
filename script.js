@@ -268,6 +268,10 @@ function loadCustomLists() {
   Object.keys(customLists).forEach(name=>{
     if(!Array.isArray(customLists[name])) customLists[name]=[];
   });
+  // Built-in persistent list. Never remove it, even when empty.
+  if(!Array.isArray(customLists.Practice)) customLists.Practice=[];
+  customLists.Practice=[...new Set(customLists.Practice.filter(v=>typeof v==='string' && v.trim()))];
+  saveCustomLists();
 }
 
 document.getElementById("addList").onclick=()=>{
@@ -289,7 +293,7 @@ document.getElementById("customListName").onkeydown=e=>{
 async function createCustomList() {
   const name=document.getElementById("customListName").value.trim();
   if(!name) return showDialog("Enter a list name.");
-  if(customLists[name]) return showDialog("This list already exists.");
+  if(customLists[name] || name.toLowerCase()==='practice') return showDialog("This list already exists.");
 
   customLists[name]=[];
   saveCustomLists();
@@ -305,32 +309,41 @@ function renderCustomLists() {
   const container=document.getElementById("customLists");
   container.innerHTML="";
 
-  Object.keys(customLists).forEach(name=>{
+  // Practice is always first and cannot be deleted.
+  Object.keys(customLists).sort((a,b)=>a==='Practice'?-1:b==='Practice'?1:a.localeCompare(b)).forEach(name=>{
+    const isPractice=name==='Practice';
     const box=document.createElement("div");
-    box.className="custom-box";
+    box.className="custom-box"+(isPractice?" practice-default-box":"");
 
     const title=document.createElement("h3");
-    title.textContent=name;
+    title.textContent=isPractice?"✦ Practice":name;
 
     const count=document.createElement("p");
     count.className="custom-count";
-    count.textContent=`${customLists[name].length} verbs`;
+    count.textContent=`${customLists[name].length} ${customLists[name].length===1?"verb":"verbs"}`;
 
     const open=document.createElement("button");
-    open.textContent="Open list";
+    open.type="button";
+    open.textContent=isPractice?"Manage & practise":"Open list";
     open.onclick=()=>openCustomList(name);
 
-    const deleteList=document.createElement("button");
-    deleteList.className="remove";
-    deleteList.textContent="Delete list";
-    deleteList.onclick=async()=>{
-      if(!await showDialog(`Delete "${name}"?`,"confirm")) return;
-      delete customLists[name];
-      saveCustomLists();
-      renderCustomLists();
-    };
-
-    box.append(title,count,open,deleteList);
+    if(isPractice){
+      const explanation=document.createElement('p');
+      explanation.className='practice-list-description';
+      explanation.textContent='Verbs you miss are saved here automatically.';
+      box.append(title,explanation,count,open);
+    }else{
+      const deleteList=document.createElement("button");
+      deleteList.className="remove";
+      deleteList.textContent="Delete list";
+      deleteList.onclick=async()=>{
+        if(!await showDialog(`Delete "${name}"?`,"confirm")) return;
+        delete customLists[name];
+        saveCustomLists();
+        renderCustomLists();
+      };
+      box.append(title,count,open,deleteList);
+    }
     container.appendChild(box);
   });
 }
@@ -353,8 +366,12 @@ function renderCustomListSettings() {
 
   const verbContainer=document.getElementById("customVerbChoices");
   verbContainer.innerHTML="";
+  // Practice is a dedicated saved list, managed by its search box and chips.
+  // The A1–C2 level picker remains available for user-created lists only.
+  const isPracticeList=name==="Practice";
+  document.getElementById("customPage").classList.toggle("practice-list-mode",isPracticeList);
 
-  Object.keys(database).forEach(lvl=>{
+  if(!isPracticeList) Object.keys(database).forEach(lvl=>{
     const heading=document.createElement("h3");
     heading.textContent=lvl;
     verbContainer.appendChild(heading);
@@ -428,7 +445,7 @@ function renderCustomListSettings() {
     verbContainer.insertBefore(toggle,controls);
   });
 
-  document.getElementById("customVerbCount").textContent=`${customLists[name].length} verbs selected`;
+  document.getElementById("customVerbCount").textContent=`${customLists[name].length} ${customLists[name].length===1?"verb":"verbs"} selected`;
 
   renderCustomChoices("customTenseChoices",tenses,selectedTenses);
   renderCustomChoices("customPronounChoices",people,selectedPeople);
@@ -1982,6 +1999,80 @@ conjugate=function(verb,tense,person){
  return '';
 };
 
+// Audited conjugation corrections for the built-in A1–C2 vocabulary.
+// "kennen" is a mixed (irregular weak) verb: kannte, gekannt.
+Object.assign(irregular, {
+  anerkennen:{present:['anerkenne','anerkennst','anerkennt','anerkennen','anerkennt','anerkennen'],past:['anerkannte','anerkanntest','anerkannte','anerkannten','anerkanntet','anerkannten'],part:'anerkannt'},
+  kennen:{present:['kenne','kennst','kennt','kennen','kennt','kennen'],past:['kannte','kanntest','kannte','kannten','kanntet','kannten'],part:'gekannt'},
+  heißen:{present:['heiße','heißt','heißt','heißen','heißt','heißen'],past:['hieß','hießest','hieß','hießen','hießt','hießen'],part:'geheißen'},
+  verstehen:{past:['verstand','verstandest','verstand','verstanden','verstandet','verstanden'],part:'verstanden'},
+  waschen:{present:['wasche','wäschst','wäscht','waschen','wascht','waschen'],past:['wusch','wuschst','wusch','wuschen','wuscht','wuschen'],part:'gewaschen'},
+  empfehlen:{present:['empfehle','empfiehlst','empfiehlt','empfehlen','empfehlt','empfehlen'],past:['empfahl','empfahlst','empfahl','empfahlen','empfahlt','empfahlen'],part:'empfohlen'},
+  vermeiden:{past:['vermied','vermiedest','vermied','vermieden','vermiedet','vermieden'],part:'vermieden'},
+  bleiben:{past:['blieb','bliebst','blieb','blieben','bliebt','blieben'],part:'geblieben',aux:'sein'},
+  reisen:{aux:'sein'},
+  begegnen:{aux:'sein'},
+  geschehen:{aux:'sein'},
+  gelingen:{aux:'sein'},
+  entfallen:{aux:'sein'},
+  entstehen:{aux:'sein'},
+  fliegen:{aux:'sein'}
+});
+Object.assign(EXTRA_IRREGULAR, {
+  heißen:['hieß','geheißen'], verstehen:['verstand','verstanden'],
+  vermeiden:['vermied','vermieden'], empfehlen:['empfahl','empfohlen'],
+  wissen:['wusste','gewusst'], kennen:['kannte','gekannt'], anerkennen:['anerkannte','anerkannt'],
+  unterbinden:['unterband','unterbunden'],
+  einladen:['lud','geladen'], verlieren:['verlor','verloren']
+});
+Object.assign(PRESENT_OVERRIDES, {
+  waschen:['wasche','wäschst','wäscht','waschen','wascht','waschen'],
+  heißen:['heiße','heißt','heißt','heißen','heißt','heißen'],
+  empfehlen:['empfehle','empfiehlst','empfiehlt','empfehlen','empfehlt','empfehlen'],
+  kennen:['kenne','kennst','kennt','kennen','kennt','kennen']
+});
+MOVE_SEIN.add('reisen');
+// "anerkennen" has an inseparable prefix and is never "erkenne an".
+delete SEPARABLE_VERBS.anerkennen;
+// "zugrunde liegen" is written as two words, including in compound tenses.
+const auditedConjugate = conjugate;
+conjugate = function(verb, tense, person) {
+  const i=person===6?5:person;
+  if(verb==='abwegig erscheinen') {
+    const result=auditedConjugate('erscheinen',tense,person);
+    if(tense==='Perfekt'||tense==='Plusquamperfekt') return result+' abwegig';
+    if(tense==='Futur II') return result.replace(/ (sein|haben)$/,' abwegig $1');
+    if(tense==='Futur I'||tense==='Konjunktiv II') return result+' abwegig';
+    return result+' abwegig';
+  }
+  if(verb==='zugrunde liegen') {
+    if(tense==='Perfekt'||tense==='Plusquamperfekt')
+      return (tense==='Perfekt'?auxiliaries.haben[i]:PRETERITE_HABEN[i])+' zugrunde gelegen';
+    if(tense==='Futur II') return FUTURE[i]+' zugrunde gelegen haben';
+    if(tense==='Futur I') return FUTURE[i]+' zugrunde liegen';
+    if(tense==='Konjunktiv II') return ['würde','würdest','würde','würden','würdet','würden'][i]+' zugrunde liegen';
+  }
+  if(tense==='Konjunktiv II') {
+    const forms={
+      wissen:['wüsste','wüsstest','wüsste','wüssten','wüsstet','wüssten'],
+      werden:['würde','würdest','würde','würden','würdet','würden'],
+      können:['könnte','könntest','könnte','könnten','könntet','könnten'],
+      müssen:['müsste','müsstest','müsste','müssten','müsstet','müssten'],
+      dürfen:['dürfte','dürftest','dürfte','dürften','dürftet','dürften'],
+      mögen:['möchte','möchtest','möchte','möchten','möchtet','möchten'],
+      sollen:['sollte','solltest','sollte','sollten','solltet','sollten'],
+      wollen:['wollte','wolltest','wollte','wollten','wolltet','wollten'],
+      gehen:['ginge','gingest','ginge','gingen','ginget','gingen'],
+      kommen:['käme','kämest','käme','kämen','kämet','kämen'],
+      finden:['fände','fändest','fände','fänden','fändet','fänden'],
+      geben:['gäbe','gäbest','gäbe','gäben','gäbet','gäben'],
+      nehmen:['nähme','nähmest','nähme','nähmen','nähmet','nähmen']
+    };
+    if(forms[verb])return forms[verb][i];
+  }
+  return auditedConjugate(verb,tense,person);
+};
+
 // Theme selection, remembered between visits.
 (function(){
  const select=document.getElementById('themeSelect');
@@ -2068,3 +2159,531 @@ document.addEventListener('keydown', function(event) {
     }
   },true);
 })();
+
+
+/* === VERIFIED CONJUGATIONS — ONE EXPLICIT LEXEME FOR EVERY BUILT-IN VERB ===
+ * Curated verb-by-verb lexicon (169 unique entries, across A1-C2).
+ * Strong/mixed stems, prefixes, participles, auxiliary verbs,
+ * second/third-person mutations, Konjunktiv II and imperatives are explicit.
+ * Only regular person endings and compound-tense auxiliaries are generated.
+ * Reference checks on irregular / defective verbs: Duden; meanings matter.
+ */
+const AUDITED_VERB_LEXICON = {"sein":{"past":"war","part":"gewesen","aux":"sein","du":"bist","er":"ist","k2":"wäre","imp":"sei","split":"-","flags":"-"},"haben":{"past":"hatte","part":"gehabt","aux":"haben","du":"hast","er":"hat","k2":"hätte","imp":"hab","split":"-","flags":"-"},"werden":{"past":"wurde","part":"geworden","aux":"sein","du":"wirst","er":"wird","k2":"würde","imp":"werde","split":"-","flags":"-"},"gehen":{"past":"ging","part":"gegangen","aux":"sein","du":"-","er":"-","k2":"ginge","imp":"geh","split":"-","flags":"-"},"kommen":{"past":"kam","part":"gekommen","aux":"sein","du":"-","er":"-","k2":"käme","imp":"komm","split":"-","flags":"-"},"machen":{"past":"machte","part":"gemacht","aux":"haben","du":"-","er":"-","k2":"-","imp":"mach","split":"-","flags":"-"},"lernen":{"past":"lernte","part":"gelernt","aux":"haben","du":"-","er":"-","k2":"-","imp":"lern","split":"-","flags":"-"},"wohnen":{"past":"wohnte","part":"gewohnt","aux":"haben","du":"-","er":"-","k2":"-","imp":"wohn","split":"-","flags":"-"},"leben":{"past":"lebte","part":"gelebt","aux":"haben","du":"-","er":"-","k2":"-","imp":"leb","split":"-","flags":"-"},"arbeiten":{"past":"arbeitete","part":"gearbeitet","aux":"haben","du":"-","er":"-","k2":"-","imp":"arbeite","split":"-","flags":"-"},"spielen":{"past":"spielte","part":"gespielt","aux":"haben","du":"-","er":"-","k2":"-","imp":"spiel","split":"-","flags":"-"},"essen":{"past":"aß","part":"gegessen","aux":"haben","du":"isst","er":"isst","k2":"äße","imp":"iss","split":"-","flags":"-"},"trinken":{"past":"trank","part":"getrunken","aux":"haben","du":"-","er":"-","k2":"tränke","imp":"trink","split":"-","flags":"-"},"sprechen":{"past":"sprach","part":"gesprochen","aux":"haben","du":"sprichst","er":"spricht","k2":"spräche","imp":"sprich","split":"-","flags":"-"},"heißen":{"past":"hieß","part":"geheißen","aux":"haben","du":"heißt","er":"heißt","k2":"hieße","imp":"heiß","split":"-","flags":"-"},"fahren":{"past":"fuhr","part":"gefahren","aux":"sein","du":"fährst","er":"fährt","k2":"führe","imp":"fahr","split":"-","flags":"-"},"lesen":{"past":"las","part":"gelesen","aux":"haben","du":"liest","er":"liest","k2":"läse","imp":"lies","split":"-","flags":"-"},"schreiben":{"past":"schrieb","part":"geschrieben","aux":"haben","du":"-","er":"-","k2":"schriebe","imp":"schreib","split":"-","flags":"-"},"sehen":{"past":"sah","part":"gesehen","aux":"haben","du":"siehst","er":"sieht","k2":"sähe","imp":"sieh","split":"-","flags":"-"},"hören":{"past":"hörte","part":"gehört","aux":"haben","du":"-","er":"-","k2":"-","imp":"hör","split":"-","flags":"-"},"kaufen":{"past":"kaufte","part":"gekauft","aux":"haben","du":"-","er":"-","k2":"-","imp":"kauf","split":"-","flags":"-"},"brauchen":{"past":"brauchte","part":"gebraucht","aux":"haben","du":"-","er":"-","k2":"-","imp":"brauch","split":"-","flags":"-"},"finden":{"past":"fand","part":"gefunden","aux":"haben","du":"-","er":"-","k2":"fände","imp":"finde","split":"-","flags":"-"},"nehmen":{"past":"nahm","part":"genommen","aux":"haben","du":"nimmst","er":"nimmt","k2":"nähme","imp":"nimm","split":"-","flags":"-"},"geben":{"past":"gab","part":"gegeben","aux":"haben","du":"gibst","er":"gibt","k2":"gäbe","imp":"gib","split":"-","flags":"-"},"schlafen":{"past":"schlief","part":"geschlafen","aux":"haben","du":"schläfst","er":"schläft","k2":"schliefe","imp":"schlaf","split":"-","flags":"-"},"laufen":{"past":"lief","part":"gelaufen","aux":"sein","du":"läufst","er":"läuft","k2":"liefe","imp":"lauf","split":"-","flags":"-"},"fragen":{"past":"fragte","part":"gefragt","aux":"haben","du":"-","er":"-","k2":"-","imp":"frag","split":"-","flags":"-"},"antworten":{"past":"antwortete","part":"geantwortet","aux":"haben","du":"-","er":"-","k2":"-","imp":"antworte","split":"-","flags":"-"},"sagen":{"past":"sagte","part":"gesagt","aux":"haben","du":"-","er":"-","k2":"-","imp":"sag","split":"-","flags":"-"},"bleiben":{"past":"blieb","part":"geblieben","aux":"sein","du":"-","er":"-","k2":"bliebe","imp":"bleib","split":"-","flags":"-"},"bringen":{"past":"brachte","part":"gebracht","aux":"haben","du":"-","er":"-","k2":"brächte","imp":"bring","split":"-","flags":"-"},"denken":{"past":"dachte","part":"gedacht","aux":"haben","du":"-","er":"-","k2":"dächte","imp":"denk","split":"-","flags":"-"},"kennen":{"past":"kannte","part":"gekannt","aux":"haben","du":"-","er":"-","k2":"kennte","imp":"kenn","split":"-","flags":"-"},"wissen":{"past":"wusste","part":"gewusst","aux":"haben","du":"weißt","er":"weiß","k2":"wüsste","imp":"wisse","split":"-","flags":"-"},"helfen":{"past":"half","part":"geholfen","aux":"haben","du":"hilfst","er":"hilft","k2":"hülfe","imp":"hilf","split":"-","flags":"-"},"treffen":{"past":"traf","part":"getroffen","aux":"haben","du":"triffst","er":"trifft","k2":"träfe","imp":"triff","split":"-","flags":"-"},"vergessen":{"past":"vergaß","part":"vergessen","aux":"haben","du":"vergisst","er":"vergisst","k2":"vergäße","imp":"vergiss","split":"-","flags":"-"},"verlieren":{"past":"verlor","part":"verloren","aux":"haben","du":"-","er":"-","k2":"verlöre","imp":"verlier","split":"-","flags":"-"},"beginnen":{"past":"begann","part":"begonnen","aux":"haben","du":"-","er":"-","k2":"begänne","imp":"beginn","split":"-","flags":"-"},"bekommen":{"past":"bekam","part":"bekommen","aux":"haben","du":"-","er":"-","k2":"bekäme","imp":"bekomm","split":"-","flags":"-"},"besuchen":{"past":"besuchte","part":"besucht","aux":"haben","du":"-","er":"-","k2":"-","imp":"besuch","split":"-","flags":"-"},"bezahlen":{"past":"bezahlte","part":"bezahlt","aux":"haben","du":"-","er":"-","k2":"-","imp":"bezahl","split":"-","flags":"-"},"erzählen":{"past":"erzählte","part":"erzählt","aux":"haben","du":"-","er":"-","k2":"-","imp":"erzähl","split":"-","flags":"-"},"erklären":{"past":"erklärte","part":"erklärt","aux":"haben","du":"-","er":"-","k2":"-","imp":"erklär","split":"-","flags":"-"},"gefallen":{"past":"gefiel","part":"gefallen","aux":"haben","du":"gefällst","er":"gefällt","k2":"gefiele","imp":"gefall","split":"-","flags":"-"},"gehören":{"past":"gehörte","part":"gehört","aux":"haben","du":"-","er":"-","k2":"-","imp":"gehör","split":"-","flags":"-"},"gewinnen":{"past":"gewann","part":"gewonnen","aux":"haben","du":"-","er":"-","k2":"gewänne","imp":"gewinn","split":"-","flags":"-"},"kochen":{"past":"kochte","part":"gekocht","aux":"haben","du":"-","er":"-","k2":"-","imp":"koch","split":"-","flags":"-"},"reisen":{"past":"reiste","part":"gereist","aux":"sein","du":"-","er":"-","k2":"-","imp":"reis","split":"-","flags":"-"},"schicken":{"past":"schickte","part":"geschickt","aux":"haben","du":"-","er":"-","k2":"-","imp":"schick","split":"-","flags":"-"},"suchen":{"past":"suchte","part":"gesucht","aux":"haben","du":"-","er":"-","k2":"-","imp":"such","split":"-","flags":"-"},"tragen":{"past":"trug","part":"getragen","aux":"haben","du":"trägst","er":"trägt","k2":"trüge","imp":"trag","split":"-","flags":"-"},"verkaufen":{"past":"verkaufte","part":"verkauft","aux":"haben","du":"-","er":"-","k2":"-","imp":"verkauf","split":"-","flags":"-"},"verstehen":{"past":"verstand","part":"verstanden","aux":"haben","du":"-","er":"-","k2":"verstünde","imp":"versteh","split":"-","flags":"-"},"warten":{"past":"wartete","part":"gewartet","aux":"haben","du":"-","er":"-","k2":"-","imp":"warte","split":"-","flags":"-"},"waschen":{"past":"wusch","part":"gewaschen","aux":"haben","du":"wäschst","er":"wäscht","k2":"wüsche","imp":"wasch","split":"-","flags":"-"},"ziehen":{"past":"zog","part":"gezogen","aux":"haben","du":"-","er":"-","k2":"zöge","imp":"zieh","split":"-","flags":"-"},"öffnen":{"past":"öffnete","part":"geöffnet","aux":"haben","du":"-","er":"-","k2":"-","imp":"öffne","split":"-","flags":"-"},"schließen":{"past":"schloss","part":"geschlossen","aux":"haben","du":"-","er":"-","k2":"schlösse","imp":"schließ","split":"-","flags":"-"},"anrufen":{"past":"rief","part":"angerufen","aux":"haben","du":"-","er":"-","k2":"riefe","imp":"ruf","split":"an","flags":"-"},"aufstehen":{"past":"stand","part":"aufgestanden","aux":"sein","du":"-","er":"-","k2":"stünde","imp":"steh","split":"auf","flags":"-"},"anfangen":{"past":"fing","part":"angefangen","aux":"haben","du":"fängst","er":"fängt","k2":"finge","imp":"fang","split":"an","flags":"-"},"ankommen":{"past":"kam","part":"angekommen","aux":"sein","du":"-","er":"-","k2":"käme","imp":"komm","split":"an","flags":"-"},"aussehen":{"past":"sah","part":"ausgesehen","aux":"haben","du":"siehst","er":"sieht","k2":"sähe","imp":"sieh","split":"aus","flags":"-"},"einladen":{"past":"lud","part":"eingeladen","aux":"haben","du":"lädst","er":"lädt","k2":"lüde","imp":"lad","split":"ein","flags":"-"},"empfehlen":{"past":"empfahl","part":"empfohlen","aux":"haben","du":"empfiehlst","er":"empfiehlt","k2":"empföhle","imp":"empfiehl","split":"-","flags":"-"},"entscheiden":{"past":"entschied","part":"entschieden","aux":"haben","du":"-","er":"-","k2":"entschiede","imp":"entscheide","split":"-","flags":"-"},"entstehen":{"past":"entstand","part":"entstanden","aux":"sein","du":"-","er":"-","k2":"entstünde","imp":"entsteh","split":"-","flags":"-"},"erreichen":{"past":"erreichte","part":"erreicht","aux":"haben","du":"-","er":"-","k2":"-","imp":"erreich","split":"-","flags":"-"},"erkennen":{"past":"erkannte","part":"erkannt","aux":"haben","du":"-","er":"-","k2":"erkennte","imp":"erkenn","split":"-","flags":"-"},"erlauben":{"past":"erlaubte","part":"erlaubt","aux":"haben","du":"-","er":"-","k2":"-","imp":"erlaub","split":"-","flags":"-"},"erwarten":{"past":"erwartete","part":"erwartet","aux":"haben","du":"-","er":"-","k2":"-","imp":"erwarte","split":"-","flags":"-"},"fliegen":{"past":"flog","part":"geflogen","aux":"sein","du":"-","er":"-","k2":"flöge","imp":"flieg","split":"-","flags":"-"},"fühlen":{"past":"fühlte","part":"gefühlt","aux":"haben","du":"-","er":"-","k2":"-","imp":"fühl","split":"-","flags":"-"},"genießen":{"past":"genoss","part":"genossen","aux":"haben","du":"-","er":"-","k2":"genösse","imp":"genieß","split":"-","flags":"-"},"geschehen":{"past":"geschah","part":"geschehen","aux":"sein","du":"-","er":"geschieht","k2":"geschähe","imp":"-","split":"-","flags":"third"},"gelingen":{"past":"gelang","part":"gelungen","aux":"sein","du":"-","er":"-","k2":"gelänge","imp":"-","split":"-","flags":"third"},"vergleichen":{"past":"verglich","part":"verglichen","aux":"haben","du":"-","er":"-","k2":"vergliche","imp":"vergleich","split":"-","flags":"-"},"verhalten":{"past":"verhielt","part":"verhalten","aux":"haben","du":"verhältst","er":"verhält","k2":"verhielte","imp":"verhalte","split":"-","flags":"-"},"verlassen":{"past":"verließ","part":"verlassen","aux":"haben","du":"verlässt","er":"verlässt","k2":"verließe","imp":"verlass","split":"-","flags":"-"},"versuchen":{"past":"versuchte","part":"versucht","aux":"haben","du":"-","er":"-","k2":"-","imp":"versuch","split":"-","flags":"-"},"vorbereiten":{"past":"bereitete","part":"vorbereitet","aux":"haben","du":"-","er":"-","k2":"-","imp":"bereite","split":"vor","flags":"-"},"vorschlagen":{"past":"schlug","part":"vorgeschlagen","aux":"haben","du":"schlägst","er":"schlägt","k2":"schlüge","imp":"schlag","split":"vor","flags":"-"},"teilnehmen":{"past":"nahm","part":"teilgenommen","aux":"haben","du":"nimmst","er":"nimmt","k2":"nähme","imp":"nimm","split":"teil","flags":"-"},"unternehmen":{"past":"unternahm","part":"unternommen","aux":"haben","du":"unternimmst","er":"unternimmt","k2":"unternähme","imp":"unternimm","split":"-","flags":"-"},"unterschreiben":{"past":"unterschrieb","part":"unterschrieben","aux":"haben","du":"-","er":"-","k2":"unterschriebe","imp":"unterschreib","split":"-","flags":"-"},"überlegen":{"past":"überlegte","part":"überlegt","aux":"haben","du":"-","er":"-","k2":"-","imp":"überleg","split":"-","flags":"-"},"umziehen":{"past":"zog","part":"umgezogen","aux":"sein","du":"-","er":"-","k2":"zöge","imp":"zieh","split":"um","flags":"-"},"ablehnen":{"past":"lehnte","part":"abgelehnt","aux":"haben","du":"-","er":"-","k2":"-","imp":"lehn","split":"ab","flags":"-"},"anerkennen":{"past":"erkannte","part":"anerkannt","aux":"haben","du":"-","er":"-","k2":"erkennte","imp":"erkenn","split":"an","flags":"-"},"anbieten":{"past":"bot","part":"angeboten","aux":"haben","du":"-","er":"-","k2":"böte","imp":"biet","split":"an","flags":"-"},"annehmen":{"past":"nahm","part":"angenommen","aux":"haben","du":"nimmst","er":"nimmt","k2":"nähme","imp":"nimm","split":"an","flags":"-"},"beeinflussen":{"past":"beeinflusste","part":"beeinflusst","aux":"haben","du":"-","er":"-","k2":"-","imp":"beeinfluss","split":"-","flags":"-"},"begegnen":{"past":"begegnete","part":"begegnet","aux":"sein","du":"-","er":"-","k2":"-","imp":"begegne","split":"-","flags":"-"},"beitragen":{"past":"trug","part":"beigetragen","aux":"haben","du":"trägst","er":"trägt","k2":"trüge","imp":"trag","split":"bei","flags":"-"},"beschließen":{"past":"beschloss","part":"beschlossen","aux":"haben","du":"-","er":"-","k2":"beschlösse","imp":"beschließ","split":"-","flags":"-"},"bestehen":{"past":"bestand","part":"bestanden","aux":"haben","du":"-","er":"-","k2":"bestünde","imp":"besteh","split":"-","flags":"-"},"betreffen":{"past":"betraf","part":"betroffen","aux":"haben","du":"betriffst","er":"betrifft","k2":"beträfe","imp":"betriff","split":"-","flags":"-"},"beweisen":{"past":"bewies","part":"bewiesen","aux":"haben","du":"-","er":"-","k2":"bewiese","imp":"beweis","split":"-","flags":"-"},"darstellen":{"past":"stellte","part":"dargestellt","aux":"haben","du":"-","er":"-","k2":"-","imp":"stell","split":"dar","flags":"-"},"durchführen":{"past":"führte","part":"durchgeführt","aux":"haben","du":"-","er":"-","k2":"-","imp":"führ","split":"durch","flags":"-"},"einsetzen":{"past":"setzte","part":"eingesetzt","aux":"haben","du":"-","er":"-","k2":"-","imp":"setz","split":"ein","flags":"-"},"entwickeln":{"past":"entwickelte","part":"entwickelt","aux":"haben","du":"-","er":"-","k2":"-","imp":"entwickle","split":"-","flags":"-"},"erfordern":{"past":"erforderte","part":"erfordert","aux":"haben","du":"-","er":"-","k2":"-","imp":"erfordere","split":"-","flags":"-"},"ermöglichen":{"past":"ermöglichte","part":"ermöglicht","aux":"haben","du":"-","er":"-","k2":"-","imp":"ermöglich","split":"-","flags":"-"},"feststellen":{"past":"stellte","part":"festgestellt","aux":"haben","du":"-","er":"-","k2":"-","imp":"stell","split":"fest","flags":"-"},"fördern":{"past":"förderte","part":"gefördert","aux":"haben","du":"-","er":"-","k2":"-","imp":"fördere","split":"-","flags":"-"},"herstellen":{"past":"stellte","part":"hergestellt","aux":"haben","du":"-","er":"-","k2":"-","imp":"stell","split":"her","flags":"-"},"hinweisen":{"past":"wies","part":"hingewiesen","aux":"haben","du":"-","er":"-","k2":"wiese","imp":"weis","split":"hin","flags":"-"},"übernehmen":{"past":"übernahm","part":"übernommen","aux":"haben","du":"übernimmst","er":"übernimmt","k2":"übernähme","imp":"übernimm","split":"-","flags":"-"},"verhindern":{"past":"verhinderte","part":"verhindert","aux":"haben","du":"-","er":"-","k2":"-","imp":"verhindere","split":"-","flags":"-"},"vermeiden":{"past":"vermied","part":"vermieden","aux":"haben","du":"-","er":"-","k2":"vermiede","imp":"vermeide","split":"-","flags":"-"},"voraussetzen":{"past":"setzte","part":"vorausgesetzt","aux":"haben","du":"-","er":"-","k2":"-","imp":"setz","split":"voraus","flags":"-"},"wahrnehmen":{"past":"nahm","part":"wahrgenommen","aux":"haben","du":"nimmst","er":"nimmt","k2":"nähme","imp":"nimm","split":"wahr","flags":"-"},"zusammenfassen":{"past":"fasste","part":"zusammengefasst","aux":"haben","du":"-","er":"-","k2":"-","imp":"fass","split":"zusammen","flags":"-"},"zunehmen":{"past":"nahm","part":"zugenommen","aux":"haben","du":"nimmst","er":"nimmt","k2":"nähme","imp":"nimm","split":"zu","flags":"-"},"abnehmen":{"past":"nahm","part":"abgenommen","aux":"haben","du":"nimmst","er":"nimmt","k2":"nähme","imp":"nimm","split":"ab","flags":"-"},"enthalten":{"past":"enthielt","part":"enthalten","aux":"haben","du":"enthältst","er":"enthält","k2":"enthielte","imp":"enthalt","split":"-","flags":"-"},"abwickeln":{"past":"wickelte","part":"abgewickelt","aux":"haben","du":"-","er":"-","k2":"-","imp":"wickle","split":"ab","flags":"-"},"anstreben":{"past":"strebte","part":"angestrebt","aux":"haben","du":"-","er":"-","k2":"-","imp":"streb","split":"an","flags":"-"},"aufrechterhalten":{"past":"hielt","part":"aufrechterhalten","aux":"haben","du":"hältst","er":"hält","k2":"hielte","imp":"halt","split":"aufrecht:halten","flags":"-"},"auslösen":{"past":"löste","part":"ausgelöst","aux":"haben","du":"-","er":"-","k2":"-","imp":"lös","split":"aus","flags":"-"},"beabsichtigen":{"past":"beabsichtigte","part":"beabsichtigt","aux":"haben","du":"-","er":"-","k2":"-","imp":"beabsichtige","split":"-","flags":"-"},"beeinträchtigen":{"past":"beeinträchtigte","part":"beeinträchtigt","aux":"haben","du":"-","er":"-","k2":"-","imp":"beeinträchtige","split":"-","flags":"-"},"bewältigen":{"past":"bewältigte","part":"bewältigt","aux":"haben","du":"-","er":"-","k2":"-","imp":"bewältig","split":"-","flags":"-"},"einräumen":{"past":"räumte","part":"eingeräumt","aux":"haben","du":"-","er":"-","k2":"-","imp":"räum","split":"ein","flags":"-"},"einschränken":{"past":"schränkte","part":"eingeschränkt","aux":"haben","du":"-","er":"-","k2":"-","imp":"schränk","split":"ein","flags":"-"},"entfallen":{"past":"entfiel","part":"entfallen","aux":"sein","du":"entfällst","er":"entfällt","k2":"entfiele","imp":"-","split":"-","flags":"third"},"entsprechen":{"past":"entsprach","part":"entsprochen","aux":"haben","du":"entsprichst","er":"entspricht","k2":"entspräche","imp":"entsprich","split":"-","flags":"-"},"hervorheben":{"past":"hob","part":"hervorgehoben","aux":"haben","du":"-","er":"-","k2":"höbe","imp":"heb","split":"hervor","flags":"-"},"nachvollziehen":{"past":"vollzog","part":"nachvollzogen","aux":"haben","du":"-","er":"-","k2":"vollzöge","imp":"vollzieh","split":"nach:vollziehen","flags":"-"},"sicherstellen":{"past":"stellte","part":"sichergestellt","aux":"haben","du":"-","er":"-","k2":"-","imp":"stell","split":"sicher","flags":"-"},"überwinden":{"past":"überwand","part":"überwunden","aux":"haben","du":"-","er":"-","k2":"überwände","imp":"überwinde","split":"-","flags":"-"},"unterliegen":{"past":"unterlag","part":"unterlegen","aux":"haben","du":"-","er":"-","k2":"unterläge","imp":"unterlieg","split":"-","flags":"-"},"veranlassen":{"past":"veranlasste","part":"veranlasst","aux":"haben","du":"-","er":"-","k2":"-","imp":"veranlass","split":"-","flags":"-"},"veranschaulichen":{"past":"veranschaulichte","part":"veranschaulicht","aux":"haben","du":"-","er":"-","k2":"-","imp":"veranschaulich","split":"-","flags":"-"},"verschaffen":{"past":"verschaffte","part":"verschafft","aux":"haben","du":"-","er":"-","k2":"-","imp":"verschaff","split":"-","flags":"-"},"vorausgehen":{"past":"ging","part":"vorausgegangen","aux":"sein","du":"-","er":"-","k2":"ginge","imp":"geh","split":"voraus","flags":"-"},"widersprechen":{"past":"widersprach","part":"widersprochen","aux":"haben","du":"widersprichst","er":"widerspricht","k2":"widerspräche","imp":"widersprich","split":"-","flags":"-"},"zurückgreifen":{"past":"griff","part":"zurückgegriffen","aux":"haben","du":"-","er":"-","k2":"griffe","imp":"greif","split":"zurück","flags":"-"},"zugrunde liegen":{"past":"lag","part":"zugrunde gelegen","aux":"haben","du":"-","er":"-","k2":"läge","imp":"-","split":"zugrunde:liegen","flags":"noimp"},"zustimmen":{"past":"stimmte","part":"zugestimmt","aux":"haben","du":"-","er":"-","k2":"-","imp":"stimm","split":"zu","flags":"-"},"gewährleisten":{"past":"gewährleistete","part":"gewährleistet","aux":"haben","du":"-","er":"-","k2":"-","imp":"gewährleiste","split":"-","flags":"-"},"abwegig erscheinen":{"past":"erschien","part":"erschienen","aux":"sein","du":"-","er":"-","k2":"erschiene","imp":"erschein","split":"-","flags":"adj"},"beherzigen":{"past":"beherzigte","part":"beherzigt","aux":"haben","du":"-","er":"-","k2":"-","imp":"beherzig","split":"-","flags":"-"},"befürworten":{"past":"befürwortete","part":"befürwortet","aux":"haben","du":"-","er":"-","k2":"-","imp":"befürworte","split":"-","flags":"-"},"bekräftigen":{"past":"bekräftigte","part":"bekräftigt","aux":"haben","du":"-","er":"-","k2":"-","imp":"bekräftig","split":"-","flags":"-"},"bemängeln":{"past":"bemängelte","part":"bemängelt","aux":"haben","du":"-","er":"-","k2":"-","imp":"bemängle","split":"-","flags":"-"},"berücksichtigen":{"past":"berücksichtigte","part":"berücksichtigt","aux":"haben","du":"-","er":"-","k2":"-","imp":"berücksichtig","split":"-","flags":"-"},"durchdringen":{"past":"durchdrang","part":"durchdrungen","aux":"haben","du":"-","er":"-","k2":"durchdränge","imp":"durchdring","split":"-","flags":"-"},"einhergehen":{"past":"ging","part":"einhergegangen","aux":"sein","du":"-","er":"-","k2":"ginge","imp":"geh","split":"einher","flags":"-"},"entgegenwirken":{"past":"wirkte","part":"entgegengewirkt","aux":"haben","du":"-","er":"-","k2":"-","imp":"wirk","split":"entgegen","flags":"-"},"entkräften":{"past":"entkräftete","part":"entkräftet","aux":"haben","du":"-","er":"-","k2":"-","imp":"entkräfte","split":"-","flags":"-"},"erschließen":{"past":"erschloss","part":"erschlossen","aux":"haben","du":"-","er":"-","k2":"erschlösse","imp":"erschließ","split":"-","flags":"-"},"hervorgehen":{"past":"ging","part":"hervorgegangen","aux":"sein","du":"-","er":"-","k2":"ginge","imp":"geh","split":"hervor","flags":"-"},"innewohnen":{"past":"wohnte","part":"innegewohnt","aux":"haben","du":"-","er":"-","k2":"-","imp":"-","split":"inne","flags":"third"},"obliegen":{"past":"oblag","part":"oblegen","aux":"haben","du":"-","er":"-","k2":"obläge","imp":"-","split":"-","flags":"third"},"preisgeben":{"past":"gab","part":"preisgegeben","aux":"haben","du":"gibst","er":"gibt","k2":"gäbe","imp":"gib","split":"preis","flags":"-"},"sich erschöpfen":{"past":"erschöpfte","part":"erschöpft","aux":"haben","du":"-","er":"-","k2":"-","imp":"erschöpf","split":"-","flags":"reflexive"},"sich zutragen":{"past":"trug","part":"zugetragen","aux":"haben","du":"trägst","er":"trägt","k2":"trüge","imp":"-","split":"zu","flags":"thirdref"},"unterbinden":{"past":"unterband","part":"unterbunden","aux":"haben","du":"-","er":"-","k2":"unterbände","imp":"unterbinde","split":"-","flags":"-"},"vergegenwärtigen":{"past":"vergegenwärtigte","part":"vergegenwärtigt","aux":"haben","du":"-","er":"-","k2":"-","imp":"vergegenwärtig","split":"-","flags":"-"},"verkennen":{"past":"verkannte","part":"verkannt","aux":"haben","du":"-","er":"-","k2":"verkennte","imp":"verkenn","split":"-","flags":"-"},"vermitteln":{"past":"vermittelte","part":"vermittelt","aux":"haben","du":"-","er":"-","k2":"-","imp":"vermittle","split":"-","flags":"-"},"verschleiern":{"past":"verschleierte","part":"verschleiert","aux":"haben","du":"-","er":"-","k2":"-","imp":"verschleier","split":"-","flags":"-"},"verzichten":{"past":"verzichtete","part":"verzichtet","aux":"haben","du":"-","er":"-","k2":"-","imp":"verzichte","split":"-","flags":"-"},"widerlegen":{"past":"widerlegte","part":"widerlegt","aux":"haben","du":"-","er":"-","k2":"-","imp":"widerleg","split":"-","flags":"-"},"zuwiderlaufen":{"past":"lief","part":"zuwidergelaufen","aux":"sein","du":"läufst","er":"läuft","k2":"liefe","imp":"lauf","split":"zuwider","flags":"-"}};
+const AUDIT_HABEN = ['habe','hast','hat','haben','habt','haben'];
+const AUDIT_SEIN = ['bin','bist','ist','sind','seid','sind'];
+const AUDIT_HATTE = ['hatte','hattest','hatte','hatten','hattet','hatten'];
+const AUDIT_WAR = ['war','warst','war','waren','wart','waren'];
+const AUDIT_FUTURE = ['werde','wirst','wird','werden','werdet','werden'];
+const AUDIT_WUERDE = ['würde','würdest','würde','würden','würdet','würden'];
+const AUDIT_REFLEXIVE = ['mich','dich','sich','uns','euch','sich'];
+const AUDIT_SIMPLE_SPECIAL = {
+  sein: ['bin','bist','ist','sind','seid','sind'],
+  haben: ['habe','hast','hat','haben','habt','haben'],
+  werden: ['werde','wirst','wird','werden','werdet','werden'],
+  wissen: ['weiß','weißt','weiß','wissen','wisst','wissen']
+};
+const AUDIT_K1_SPECIAL = {sein: ['sei','seiest','sei','seien','seiet','seien']};
+const AUDIT_K2_SPECIAL = {
+  sein: ['wäre','wärst','wäre','wären','wärt','wären'],
+  haben: ['hätte','hättest','hätte','hätten','hättet','hätten'],
+  werden: AUDIT_WUERDE
+};
+// -eln: ich entwickle, ich vermittle; -ern: ich fördere.
+function auditedCoreStem(inf) {return inf.replace(/en$|n$/, '');}
+function auditedPresent(inf, row) {
+  if (AUDIT_SIMPLE_SPECIAL[inf]) return AUDIT_SIMPLE_SPECIAL[inf].slice();
+  const s=auditedCoreStem(inf);
+  const insert=/[td]$/.test(s)||/(?:[fgkptd]n|[dt]m)$/.test(s);
+  const ich=inf.endsWith('eln')? s.slice(0,-2)+'le' : inf.endsWith('ern')?s+'e':s+'e';
+  const du=row.du!=='-' ? row.du : s+(insert?'est':/[sßzx]$/.test(s)?'t':'st');
+  const er=row.er!=='-' ? row.er : s+(insert?'et':'t');
+  const ihr=s+(insert?'et':'t');
+  return [ich,du,er,inf,ihr,inf];
+}
+function auditedPast(past) {
+  if(past==='wurde') return ['wurde','wurdest','wurde','wurden','wurdet','wurden'];
+  // Weak and mixed verbs have -te/-ete in the ich form.
+  if(past.endsWith('te')) {const base=past.slice(0,-1);return [past,base+'est',past,base+'en',base+'et',base+'en'];}
+  const needsE=/[dt]$/.test(past);
+  const du=past+(needsE||/[sßz]$/.test(past)?'est':'st');
+  return [past,du,past,past+'en',past+(needsE?'et':'t'),past+'en'];
+}
+function auditedKonjI(inf){
+  if (AUDIT_K1_SPECIAL[inf]) return AUDIT_K1_SPECIAL[inf].slice();
+  const s=auditedCoreStem(inf);
+  // German -eln/-ern verbs retain indicative du/ihr forms in Konjunktiv I.
+  if(inf.endsWith('eln') || inf.endsWith('ern')) {
+    const indicative=auditedPresent(inf,{du:'-',er:'-'});
+    return [indicative[0],indicative[1],indicative[0],inf,indicative[4],inf];
+  }
+  return [s+'e',s+'est',s+'e',inf,s+'et',inf];
+}
+function auditedKonjII(ich){
+  const base=ich.slice(0,-1);
+  return [ich,base+'est',ich,base+'en',base+'et',base+'en'];
+}
+function auditedRecord(verb){
+  const row=AUDITED_VERB_LEXICON[verb];
+  if (!row) return null;
+  const prefixRule=row.split==='-'?null:row.split;
+  const reflexive=verb.startsWith('sich ');
+  const bare=reflexive?verb.slice(5):verb;
+  const adj=row.flags==='adj';
+  const prefix=prefixRule?(prefixRule.includes(':')?prefixRule.split(':')[0]:prefixRule):'';
+  const core=adj?'erscheinen':prefixRule?(prefixRule.includes(':')?prefixRule.split(':')[1]:bare.slice(prefix.length)):bare;
+  const present=auditedPresent(core,row);
+  const past=auditedPast(row.past);
+  const k1=auditedKonjI(core);
+  const k2=AUDIT_K2_SPECIAL[verb]|| (row.k2!=='-'?auditedKonjII(row.k2):null);
+  return {row,core,prefix,reflexive,bare,adj,present,past,k1,k2};
+}
+function auditedConjugateForm(verb,tense,person){
+  const rec=auditedRecord(verb);
+  if(!rec) return null; // user-created verbs keep the legacy fallback
+  const {row,core,prefix,reflexive,adj,present,past,k1,k2}=rec;
+  const p=person===6?5:person;
+  const thirdOnly=['third','thirdref'].includes(row.flags);
+  if(thirdOnly && p!==2 && p!==5) return '—';
+  if(tense==='Imperativ') {
+    if([0,2,5].includes(person)||thirdOnly||row.flags==='noimp'||row.imp==='-') return '—';
+    const refl=reflexive?(' '+AUDIT_REFLEXIVE[p]):'';
+    if(core==='sein')return person===1?'sei':person===3?'seien wir':person===4?'seid':'seien Sie';
+    if(person===1)return row.imp+refl+(prefix?' '+prefix:'')+(adj?' abwegig':'');
+    if(person===3)return core+' wir'+(reflexive?' uns':'')+(prefix?' '+prefix:'')+(adj?' abwegig':'');
+    if(person===4)return present[4]+refl+(prefix?' '+prefix:'')+(adj?' abwegig':'');
+    if(person===6)return core+' Sie'+(reflexive?' sich':'')+(prefix?' '+prefix:'')+(adj?' abwegig':'');
+    return '—';
+  }
+  const refl=reflexive?' '+AUDIT_REFLEXIVE[p]:'';
+  const tail=prefix?' '+prefix:'';
+  const finite=(f)=>f+refl+tail+(adj?' abwegig':'');
+  const aux=row.aux==='sein'?AUDIT_SEIN:AUDIT_HABEN;
+  const pastAux=row.aux==='sein'?AUDIT_WAR:AUDIT_HATTE;
+  const participle=(adj?'abwegig ':'')+row.part;
+  if(tense==='Präsens')return finite(present[p]);
+  if(tense==='Präteritum')return finite(past[p]);
+  if(tense==='Konjunktiv I')return finite(k1[p]);
+  if(tense==='Konjunktiv II')return k2?finite(k2[p]):AUDIT_WUERDE[p]+refl+' '+verb.replace(/^sich /,'') ;
+  if(tense==='Perfekt')return aux[p]+refl+' '+participle;
+  if(tense==='Plusquamperfekt')return pastAux[p]+refl+' '+participle;
+  if(tense==='Futur I')return AUDIT_FUTURE[p]+refl+' '+(reflexive?verb.slice(5):verb);
+  if(tense==='Futur II')return AUDIT_FUTURE[p]+refl+' '+participle+' '+row.aux;
+  return '';
+}
+const previousConjugateBeforeFullAudit=conjugate;
+conjugate=function(verb,tense,person){
+  return auditedConjugateForm(verb,tense,person) ?? previousConjugateBeforeFullAudit(verb,tense,person);
+};
+function auditedAcceptedAnswers(verb,tense,person){
+  const primary=conjugate(verb,tense,person);
+  const answers=[primary];
+  const row=AUDITED_VERB_LEXICON[verb];
+  if(!row||primary==='—')return answers;
+  const i=person===6?5:person;
+  // Valid analytic Konjunktiv II alternatives.
+  if(tense==='Konjunktiv II'&&row.k2!=='-'&&row.flags!=='adj'){
+    answers.push(AUDIT_WUERDE[i]+(verb.startsWith('sich ')?' '+AUDIT_REFLEXIVE[i]:'')+' '+verb.replace(/^sich /,''));
+  }
+  // The synthetic Konjunktiv II of weak verbs matches their Präteritum.
+  if(tense==='Konjunktiv II'&&row.k2==='-'&&row.past.endsWith('te')){
+    const rec=auditedRecord(verb);
+    answers.push(rec.past[i]+(rec.reflexive?' '+AUDIT_REFLEXIVE[i]:'')+(rec.prefix?' '+rec.prefix:'')+(rec.adj?' abwegig':''));
+  }
+  // Accepted short/long variants for verbs in -eln, e.g. vermittle / vermittele.
+  const rec=auditedRecord(verb);
+  if(rec.core.endsWith('eln')){
+    if((tense==='Präsens'&&i===0)||(tense==='Konjunktiv I'&&(i===0||i===2))){
+      answers.push(rec.core.slice(0,-1)+'e'+(rec.prefix?' '+rec.prefix:''));
+    }
+    if(tense==='Imperativ'&&person===1){
+      const longBase=rec.core.slice(0,-1);
+      answers.push(longBase+(rec.prefix?' '+rec.prefix:''));
+      answers.push(longBase+'e'+(rec.prefix?' '+rec.prefix:''));
+    }
+  }
+  if(tense==='Imperativ' && person===1 && row.imp!=='-' && !['iss','gib','nimm','sprich','hilf','triff','vergiss','lies','empfiehl','übernimm','unternimm','widersprich','entsprich','betriff'].includes(row.imp) && /[bcdfghjklmnpqrstvwxzß]$/.test(row.imp) && !/[td]$/.test(row.imp)) {
+    const alt=primary.replace(row.imp,row.imp+'e');
+    if(alt!==primary)answers.push(alt);
+  }
+  // Depending on meaning, pulling/dragging (ziehen) can use haben or sein.
+  if(['ziehen','fahren','fliegen','laufen'].includes(verb)&&['Perfekt','Plusquamperfekt','Futur II'].includes(tense)){
+    if(tense==='Perfekt')answers.push((row.aux==='haben'?AUDIT_SEIN[i]:AUDIT_HABEN[i])+' '+row.part);
+    if(tense==='Plusquamperfekt')answers.push((row.aux==='haben'?AUDIT_WAR[i]:AUDIT_HATTE[i])+' '+row.part);
+    if(tense==='Futur II')answers.push(AUDIT_FUTURE[i]+' '+row.part+' '+(row.aux==='haben'?'sein':'haben'));
+  }
+  return [...new Set(answers)];
+}
+function auditedNormalize(s){return s.normalize('NFC').toLocaleLowerCase('de-DE').replace(/[.!]+$/,'').replace(/\s+/g,' ').trim();}
+function auditedAnswerMatches(verb,tense,person,answer){
+  return auditedAcceptedAnswers(verb,tense,person).some(x=>auditedNormalize(x)===auditedNormalize(answer));
+}
+// Defective verbs: do not prompt for impossible persons.
+const previousRenderCurrentVerbForFullAudit=renderCurrentVerb;
+renderCurrentVerb=function(){
+  // Preserve the physical keyboard element before the base renderer clears #exercise.
+  const exerciseRoot=document.getElementById('exercise');
+  const germanKeyboard=document.getElementById('specialLetters');
+  if(germanKeyboard && exerciseRoot.contains(germanKeyboard)){
+    exerciseRoot.before(germanKeyboard);
+  }
+  previousRenderCurrentVerbForFullAudit();
+  // Put umlaut keys immediately before the first answer, within the tense card.
+  const firstAnswerRow=exerciseRoot.querySelector('.exercise-tense .exercise-row');
+  if(germanKeyboard && firstAnswerRow){firstAnswerRow.before(germanKeyboard);}
+  currentExercises=currentExercises.filter(item=>{
+    if(conjugate(item.verb,item.tense,item.index)!=='—')return true;
+    item.input.disabled=true;
+    item.input.placeholder='Not used with this pronoun';
+    item.input.closest('.exercise-row').style.opacity='.38';
+    item.status.textContent='—';
+    return false;
+  });
+  // Rebind Enter navigation after removing inapplicable pronouns.
+  currentExercises.forEach((item,index)=>{
+    item.input.addEventListener('keydown',event=>{
+      if(event.key!=='Enter'||event.isComposing)return;
+      event.preventDefault();event.stopImmediatePropagation();
+      const next=currentExercises.slice(index+1).find(x=>!x.input.disabled);
+      if(next)next.input.focus();
+      else {item.input.blur();checkCurrentVerb();}
+    },true);
+  });
+  if(!currentExercises.length && practiceVerbs.length && currentVerbIndex < practiceVerbs.length){
+    document.getElementById('answerActions').classList.add('hidden');
+    document.getElementById('verbNavigation').classList.remove('hidden');
+    document.getElementById('result').textContent='No applicable forms for the selected pronouns.';
+    document.getElementById('result').classList.remove('hidden');
+  }
+};
+// Grade known acceptable variants, rather than marking grammatical alternatives wrong.
+checkCurrentVerb=function(){
+  if(!currentExercises.length)return;
+  let score=0;
+  for(const item of currentExercises){
+    if(item.input.dataset.inkAnswer==='true'){
+      item.status.textContent='✎ Compare with: '+conjugate(item.verb,item.tense,item.index);
+      item.status.className='status';
+    }else if(auditedAnswerMatches(item.verb,item.tense,item.index,item.input.value)){
+      score++;item.status.textContent='✓';item.status.className='status correct';
+    }else{
+      item.status.textContent='✗ '+conjugate(item.verb,item.tense,item.index);
+      item.status.className='status wrong';
+    }
+    item.input.disabled=true;
+  }
+  document.getElementById('result').textContent=`Result: ${score} / ${currentExercises.length} correct`;
+  document.getElementById('result').classList.remove('hidden');
+  document.getElementById('answerActions').classList.add('hidden');
+  document.getElementById('verbNavigation').classList.remove('hidden');
+  showMotivation();
+};
+document.getElementById('checkAll').onclick=checkCurrentVerb;
+showMotivation=function(){
+  const element=document.getElementById('handwrittenMotivation');
+  const correct=currentExercises.filter(x=>auditedAnswerMatches(x.verb,x.tense,x.index,x.input.value)).length;
+  const ratio=currentExercises.length?correct/currentExercises.length:0;
+  const message=appPhrase(ratio>=.83?'great':ratio>=.4?'good':'keepGoing');
+  element.replaceChildren(document.createTextNode(message));
+  const sig=document.createElement('span');sig.className='signature';sig.textContent=appPhrase('signature');
+  element.append(sig);element.classList.remove('hidden');
+};
+
+// Keep the completed exercise and its navigation at the bottom of the page
+// after checking answers, whether submitted by the button or the Enter key.
+const checkCurrentVerbBeforeBottomScroll = checkCurrentVerb;
+checkCurrentVerb = function (...args) {
+  const result = checkCurrentVerbBeforeBottomScroll.apply(this, args);
+  const navigation = document.getElementById('verbNavigation');
+  if (navigation && !navigation.classList.contains('hidden')) {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        window.scrollTo({
+          top: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight),
+          behavior: 'instant'
+        });
+      });
+    });
+  }
+  return result;
+};
+document.getElementById('checkAll').onclick = checkCurrentVerb;
+
+
+// =========================================================
+// PERSISTENT PRACTICE LIST + ERROR NOTIFICATIONS + BUG REPORTS
+// =========================================================
+(function enablePracticeListAndBugReports(){
+  const PRACTICE_NAME='Practice';
+  const allVerbs=[...new Set(Object.values(database).flat())].sort((a,b)=>a.localeCompare(b,'de'));
+  const manager=document.getElementById('practiceListManager');
+  const input=document.getElementById('practiceVerbInput');
+  const options=document.getElementById('practiceVerbOptions');
+  const selected=document.getElementById('practiceSelectedVerbs');
+  const feedback=document.getElementById('practiceInputMessage');
+  const toast=document.getElementById('practiceToast');
+  let toastTimeout=null;
+
+  allVerbs.forEach(verb=>{
+    const option=document.createElement('option');
+    option.value=verb;
+    options.appendChild(option);
+  });
+  function textFor(s){return typeof uiTranslate==='function'?uiTranslate(s):s;}
+  function announce(message){
+    clearTimeout(toastTimeout);
+    toast.textContent=message;
+    toast.hidden=false;
+    toastTimeout=setTimeout(()=>{toast.hidden=true;},5000);
+  }
+  function updatePracticeUI(){
+    renderCustomLists();
+    if(activeCustomList===PRACTICE_NAME)renderCustomListSettings();
+  }
+  function addPracticeVerb(verb,notify=false){
+    if(!customLists[PRACTICE_NAME])customLists[PRACTICE_NAME]=[];
+    if(customLists[PRACTICE_NAME].includes(verb))return false;
+    customLists[PRACTICE_NAME].push(verb);
+    saveCustomLists();
+    updatePracticeUI();
+    if(notify)announce(textFor('Added to Practice list')+': '+verb);
+    return true;
+  }
+  function removePracticeVerb(verb){
+    customLists[PRACTICE_NAME]=customLists[PRACTICE_NAME].filter(v=>v!==verb);
+    saveCustomLists();
+    updatePracticeUI();
+    feedback.textContent=textFor('Removed from Practice list')+': '+verb;
+  }
+  function renderPracticeManager(){
+    const visible=activeCustomList===PRACTICE_NAME;
+    manager.classList.toggle('hidden',!visible);
+    if(!visible)return;
+    selected.replaceChildren();
+    const verbs=customLists[PRACTICE_NAME]||[];
+    if(!verbs.length){
+      const empty=document.createElement('p');
+      empty.className='practice-empty';
+      empty.textContent=textFor('This list is empty. Mistakes will appear here.');
+      selected.appendChild(empty);
+    }
+    verbs.forEach(verb=>{
+      const item=document.createElement('span');item.className='practice-verb-chip';
+      const name=document.createElement('span');name.textContent=verb;
+      const remove=document.createElement('button');
+      remove.type='button';remove.textContent='×';
+      remove.title=textFor('Remove verb')+': '+verb;
+      remove.setAttribute('aria-label',textFor('Remove verb')+': '+verb);
+      remove.addEventListener('click',()=>removePracticeVerb(verb));
+      item.append(name,remove);selected.appendChild(item);
+    });
+  }
+  // Re-render the dedicated quick manager whenever any list's
+  // selection controls change. The existing full-level checkboxes work too.
+  const renderCustomSettingsBeforePractice=renderCustomListSettings;
+  renderCustomListSettings=function(...args){
+    const result=renderCustomSettingsBeforePractice.apply(this,args);
+    renderPracticeManager();
+    return result;
+  };
+  document.getElementById('practiceAddVerb').addEventListener('click',()=>{
+    const requested=input.value.trim();
+    const verb=allVerbs.find(v=>v.toLocaleLowerCase('de')===requested.toLocaleLowerCase('de'));
+    if(!verb){feedback.textContent=textFor('Choose a verb from the suggestions.');return;}
+    if(!addPracticeVerb(verb)){
+      feedback.textContent=textFor('Already in Practice list')+': '+verb;
+      return;
+    }
+    input.value='';feedback.textContent=textFor('Added to Practice list')+': '+verb;
+  });
+  input.addEventListener('keydown',event=>{
+    if(event.key==='Enter'){
+      event.preventDefault();
+      document.getElementById('practiceAddVerb').click();
+    }
+  });
+
+  // Inspect the final grading statuses (including legitimate alternate
+  // conjugations) only on the first check for an exercise.
+  const checkBeforePracticeList=checkCurrentVerb;
+  checkCurrentVerb=function(...args){
+    const actions=document.getElementById('answerActions');
+    const pending=!actions.classList.contains('hidden') && currentExercises.length>0;
+    const result=checkBeforePracticeList.apply(this,args);
+    if(pending && currentExercises.some(item=>item.status.classList.contains('wrong'))){
+      const wrongVerb=currentExercises.find(item=>item.status.classList.contains('wrong')).verb;
+      addPracticeVerb(wrongVerb,true);
+    }
+    return result;
+  };
+  document.getElementById('checkAll').onclick=checkCurrentVerb;
+
+  const dialog=document.getElementById('bugReportDialog');
+  const description=document.getElementById('bugDescription');
+  const steps=document.getElementById('bugSteps');
+  const category=document.getElementById('bugCategory');
+  const status=document.getElementById('bugReportStatus');
+  const trigger=document.getElementById('openBugReport');
+  let previousFocus=null;
+
+  function openBugReport(){
+    // Close settings before opening the modal.
+    document.getElementById('closeSettings').click();
+    previousFocus=trigger;
+    status.textContent='';
+    dialog.classList.remove('hidden');
+    dialog.setAttribute('aria-hidden','false');
+    description.focus();
+  }
+  function closeBugReport(){
+    dialog.classList.add('hidden');
+    dialog.setAttribute('aria-hidden','true');
+    trigger.focus();
+  }
+  trigger.addEventListener('click',openBugReport);
+  document.getElementById('closeBugReport').addEventListener('click',closeBugReport);
+  dialog.addEventListener('pointerdown',event=>{
+    if(event.target===dialog)closeBugReport();
+  });
+  document.addEventListener('keydown',event=>{
+    if(dialog.classList.contains('hidden'))return;
+    if(event.key==='Escape'){
+      event.preventDefault();event.stopPropagation();closeBugReport();
+    }
+    if(event.key==='Tab'){
+      const active=[...dialog.querySelectorAll('input,textarea,select,button')]
+        .filter(el=>!el.disabled&&!el.hidden);
+      if(event.shiftKey&&document.activeElement===active[0]){
+        event.preventDefault();active.at(-1).focus();
+      }else if(!event.shiftKey&&document.activeElement===active.at(-1)){
+        event.preventDefault();active[0].focus();
+      }
+    }
+  },true);
+  function formatBugReport(){
+    const onPractice=!document.getElementById('page3').classList.contains('hidden');
+    const verb=onPractice?practiceVerbs[currentVerbIndex]||'—':'—';
+    const tense=onPractice?selectedTenses[currentTenseIndex]||'—':'—';
+    return [
+      'GERMAN VERB TRAINER — BUG REPORT',
+      'Category: '+category.value,
+      'Details: '+description.value.trim(),
+      'Steps to reproduce: '+(steps.value.trim()||'Not provided'),
+      'Current verb: '+verb,
+      'Current tense: '+tense,
+      'Interface language: '+interfaceLocale,
+      'Reported at: '+new Date().toISOString()
+    ].join('\n');
+  }
+  function validateReport(){
+    if(description.value.trim())return true;
+    status.textContent=textFor('Please describe the bug first.');
+    description.focus();
+    return false;
+  }
+  const bugReportForm=document.getElementById('bugReportForm');
+  const bugSendButton=document.getElementById('emailBugReport');
+  let bugSending=false;
+  bugReportForm.addEventListener('submit',async(event)=>{
+    event.preventDefault();
+    if(bugSending || !validateReport())return;
+    if(!/^https?:$/.test(window.location.protocol)){
+      status.textContent=textFor('Publish the website online to enable direct bug reports.');
+      return;
+    }
+    bugSending=true;
+    bugSendButton.disabled=true;
+    const originalButtonLabel=bugSendButton.textContent;
+    bugSendButton.textContent=textFor('Sending…');
+    status.textContent=textFor('Sending…');
+    try{
+      const report=formatBugReport();
+      const response=await fetch('https://formsubmit.co/ajax/contact@studyzone.tech',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Accept':'application/json'},
+        body:JSON.stringify({
+          _subject:'German Verb Trainer — '+category.value+' bug',
+          _template:'table',
+          _url:window.location.href,
+          _honey:'',
+          category:category.value,
+          message:report
+        })
+      });
+      if(!response.ok)throw new Error('HTTP '+response.status);
+      const data=await response.json();
+      if(data.success!==true && data.success!=='true'){
+        throw new Error(data.message||'Submission rejected');
+      }
+      status.textContent=textFor('Report submitted for delivery to contact@studyzone.tech.');
+      description.value='';
+      steps.value='';
+    }catch(error){
+      console.error('Bug report submission failed:',error);
+      status.textContent=textFor('Could not send the report. Try again, or copy the report.');
+    }finally{
+      bugSending=false;
+      bugSendButton.disabled=false;
+      bugSendButton.textContent=originalButtonLabel;
+    }
+  });
+  document.getElementById('copyBugReport').addEventListener('click',async()=>{
+    if(!validateReport())return;
+    const content=formatBugReport();
+    try{
+      if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(content);
+      else throw new Error('Clipboard API unavailable');
+      status.textContent=textFor('Report copied. Share it with the developer.');
+    }catch(error){
+      const hidden=document.createElement('textarea');
+      hidden.value=content;
+      hidden.style.position='fixed';hidden.style.opacity='0';
+      document.body.appendChild(hidden);hidden.select();
+      const copied=!!document.execCommand?.('copy');
+      hidden.remove();
+      status.textContent=copied?textFor('Report copied. Share it with the developer.'):
+        textFor('Copy unavailable. Use Email report instead.');
+    }
+  });
+})();
+
+// New feature labels follow the trainer's existing interface localization.
+Object.assign(UI_LANGUAGES, {
+  'Manage & practise':{ar:'إدارة القائمة والتدرّب',fr:'Gérer et s’entraîner',de:'Verwalten und üben',es:'Gestionar y practicar'},
+  'Verbs you miss are saved here automatically.':{ar:'تُحفظ هنا الأفعال التي تخطئ فيها تلقائيًا.',fr:'Les verbes ratés sont enregistrés ici automatiquement.',de:'Falsch beantwortete Verben werden hier automatisch gespeichert.',es:'Los verbos que respondas mal se guardan aquí automáticamente.'},
+  'Your Practice list':{ar:'قائمة التمرين الخاصة بك',fr:'Votre liste de révision',de:'Deine Übungsliste',es:'Tu lista de práctica'},
+  'Any verb you get wrong is saved here automatically. Add or remove verbs whenever you like.':{ar:'يُحفظ أي فعل تخطئ فيه هنا تلقائيًا. يمكنك إضافة الأفعال أو حذفها متى شئت.',fr:'Chaque verbe raté est enregistré automatiquement. Ajoutez ou retirez des verbes à tout moment.',de:'Falsch beantwortete Verben werden automatisch gespeichert. Du kannst jederzeit Verben hinzufügen oder entfernen.',es:'Los verbos que falles se guardarán automáticamente. Puedes añadir o quitar verbos cuando quieras.'},
+  'Add a verb':{ar:'أضف فعلًا',fr:'Ajouter un verbe',de:'Verb hinzufügen',es:'Añadir verbo'},
+  'Search for a German verb':{ar:'ابحث عن فعل ألماني',fr:'Rechercher un verbe allemand',de:'Deutsches Verb suchen',es:'Buscar un verbo alemán'},
+  '＋ Add':{ar:'＋ إضافة',fr:'＋ Ajouter',de:'＋ Hinzufügen',es:'＋ Añadir'},
+  'Added to Practice list':{ar:'أُضيف إلى قائمة التمرين',fr:'Ajouté à la liste de révision',de:'Zur Übungsliste hinzugefügt',es:'Añadido a la lista de práctica'},
+  'Removed from Practice list':{ar:'أُزيل من قائمة التمرين',fr:'Retiré de la liste de révision',de:'Aus der Übungsliste entfernt',es:'Quitado de la lista de práctica'},
+  'Already in Practice list':{ar:'موجود بالفعل في قائمة التمرين',fr:'Déjà dans la liste de révision',de:'Bereits in der Übungsliste',es:'Ya está en la lista de práctica'},
+  'Remove verb':{ar:'إزالة الفعل',fr:'Retirer le verbe',de:'Verb entfernen',es:'Quitar verbo'},
+  'Choose a verb from the suggestions.':{ar:'اختر فعلًا من الاقتراحات.',fr:'Choisissez un verbe parmi les suggestions.',de:'Bitte ein Verb aus den Vorschlägen wählen.',es:'Elige un verbo de las sugerencias.'},
+  'This list is empty. Mistakes will appear here.':{ar:'هذه القائمة فارغة. ستظهر هنا الأفعال التي تخطئ فيها.',fr:'Cette liste est vide. Les erreurs apparaîtront ici.',de:'Diese Liste ist leer. Fehler erscheinen hier.',es:'Esta lista está vacía. Los errores aparecerán aquí.'},
+  'Help & feedback':{ar:'المساعدة والملاحظات',fr:'Aide et retours',de:'Hilfe & Feedback',es:'Ayuda y comentarios'},
+  'Found a problem with a verb, translation or the website?':{ar:'هل وجدت مشكلة في فعل أو ترجمة أو الموقع؟',fr:'Un problème avec un verbe, une traduction ou le site ?',de:'Ein Problem mit einem Verb, einer Übersetzung oder der Website?',es:'¿Encontraste algún problema con un verbo, una traducción o la web?'},
+  'Report a bug':{ar:'الإبلاغ عن خطأ',fr:'Signaler un problème',de:'Fehler melden',es:'Informar de un error'},
+  'Describe the problem. You can copy the report or open an email draft to share it.':{ar:'صف المشكلة. يمكنك نسخ البلاغ أو فتح مسودة بريد لمشاركته.',fr:'Décrivez le problème. Copiez le signalement ou ouvrez un brouillon d’e-mail.',de:'Beschreibe das Problem. Kopiere die Meldung oder öffne einen E-Mail-Entwurf.',es:'Describe el problema. Copia el informe o abre un borrador de correo.'},
+  'Type of issue':{ar:'نوع المشكلة',fr:'Type de problème',de:'Art des Problems',es:'Tipo de problema'},
+  'What went wrong?':{ar:'ما الخطأ الذي حدث؟',fr:'Que s’est-il passé ?',de:'Was ist schiefgelaufen?',es:'¿Qué ha fallado?'},
+  'Describe the bug...':{ar:'صف الخطأ...',fr:'Décrivez le problème...',de:'Beschreibe den Fehler...',es:'Describe el error...'},
+  'How can we reproduce it? (optional)':{ar:'كيف يمكن إعادة ظهور الخطأ؟ (اختياري)',fr:'Comment reproduire le problème ? (facultatif)',de:'Wie lässt sich der Fehler reproduzieren? (optional)',es:'¿Cómo podemos reproducirlo? (opcional)'},
+  'Steps to reproduce the problem...':{ar:'خطوات إعادة ظهور المشكلة...',fr:'Étapes pour reproduire le problème...',de:'Schritte zum Reproduzieren...',es:'Pasos para reproducir el problema...'},
+  'Reports include the current verb, tense and app language. Nothing is sent automatically.':{ar:'يتضمن البلاغ الفعل والزمن ولغة التطبيق الحالية. لا يُرسل شيء تلقائيًا.',fr:'Le signalement inclut le verbe, le temps et la langue de l’application. Aucun envoi automatique.',de:'Die Meldung enthält Verb, Zeitform und App-Sprache. Nichts wird automatisch gesendet.',es:'El informe incluye el verbo, tiempo e idioma de la aplicación. Nada se envía automáticamente.'},
+  'Send a bug report directly to the support team without opening an email app.':{ar:'أرسل بلاغ الخطأ مباشرة إلى فريق الدعم دون فتح تطبيق البريد.',fr:'Envoyez le signalement directement à l’équipe sans ouvrir votre messagerie.',de:'Sende einen Fehlerbericht direkt an das Team, ohne eine E-Mail-App zu öffnen.',es:'Envía el informe directamente al equipo sin abrir una app de correo.'},
+  'Reports include the current verb, tense and app language. Sent to contact@studyzone.tech only when you press Send report.':{ar:'يتضمن البلاغ الفعل والزمن ولغة التطبيق. يُرسل إلى contact@studyzone.tech فقط عند الضغط على إرسال.',fr:'Le rapport inclut le verbe, le temps et la langue. Envoi à contact@studyzone.tech seulement après confirmation.',de:'Der Bericht enthält Verb, Zeitform und Sprache. Versand an contact@studyzone.tech nur nach Klick auf Senden.',es:'El informe incluye verbo, tiempo e idioma. Se envía a contact@studyzone.tech solo al pulsar Enviar.'},
+  'Send report':{ar:'إرسال البلاغ',fr:'Envoyer le signalement',de:'Bericht senden',es:'Enviar informe'},
+  'Sending…':{ar:'جارٍ الإرسال…',fr:'Envoi en cours…',de:'Wird gesendet…',es:'Enviando…'},
+  'Report submitted for delivery to contact@studyzone.tech.':{ar:'تم تقديم البلاغ لإرساله إلى contact@studyzone.tech.',fr:'Rapport soumis pour transmission à contact@studyzone.tech.',de:'Bericht zur Zustellung an contact@studyzone.tech eingereicht.',es:'Informe presentado para su entrega a contact@studyzone.tech.'},
+  'Could not send the report. Try again, or copy the report.':{ar:'تعذّر إرسال البلاغ. أعد المحاولة أو انسخه.',fr:'Envoi impossible. Réessayez ou copiez le rapport.',de:'Senden fehlgeschlagen. Versuche es erneut oder kopiere den Bericht.',es:'No se pudo enviar. Inténtalo de nuevo o copia el informe.'},
+  'Publish the website online to enable direct bug reports.':{ar:'انشر الموقع على الإنترنت لتفعيل إرسال البلاغات مباشرة.',fr:'Publiez le site en ligne pour activer l’envoi des rapports.',de:'Veröffentliche die Website online, um Berichte direkt zu senden.',es:'Publica el sitio web para activar el envío directo.'},
+  'Copy report':{ar:'نسخ البلاغ',fr:'Copier le signalement',de:'Meldung kopieren',es:'Copiar informe'},
+  'Email report':{ar:'إرسال عبر البريد',fr:'Envoyer par e-mail',de:'Per E-Mail senden',es:'Enviar por correo'},
+  'Close bug report':{ar:'إغلاق البلاغ',fr:'Fermer le signalement',de:'Meldung schließen',es:'Cerrar informe'},
+  'Please describe the bug first.':{ar:'يرجى وصف الخطأ أولًا.',fr:'Veuillez d’abord décrire le problème.',de:'Bitte beschreibe zuerst den Fehler.',es:'Describe el error primero.'},
+  'Report copied. Share it with the developer.':{ar:'نُسخ البلاغ. شاركه مع المطوّر.',fr:'Signalement copié. Partagez-le avec le développeur.',de:'Meldung kopiert. Teile sie mit dem Entwickler.',es:'Informe copiado. Compártelo con el desarrollador.'},
+  'Copy unavailable. Use Email report instead.':{ar:'تعذّر النسخ. استخدم البريد بدلًا منه.',fr:'Copie impossible. Utilisez plutôt l’e-mail.',de:'Kopieren nicht möglich. Verwende die E-Mail-Option.',es:'No se pudo copiar. Usa la opción de correo.'},
+  'Email draft opened. Choose a recipient and send it.':{ar:'تم طلب فتح مسودة بريد. اختر المستلم وأرسلها.',fr:'Ouverture du brouillon demandée. Choisissez un destinataire et envoyez-le.',de:'E-Mail-Entwurf angefordert. Empfänger auswählen und senden.',es:'Se ha solicitado abrir el borrador. Elige destinatario y envíalo.'}
+});
+uiTranslateTree(document.body);
