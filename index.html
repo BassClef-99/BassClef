@@ -168,21 +168,28 @@
         <button id="closeBugReport" class="settings-close" type="button" aria-label="Close bug report">×</button>
       </div>
       <p id="bugReportHelp">Send a bug report directly to the support team without opening an email app.</p>
-      <form id="bugReportForm" action="https://formsubmit.co/contact@studyzone.tech" method="POST">
+      <form id="bugReportForm" action="https://formsubmit.co/contact@studyzone.tech" method="POST" target="_blank">
+        <input type="hidden" id="bugSubject" name="_subject" value="German Verb Trainer — Bug report">
+        <input type="hidden" name="_template" value="table">
+        <input type="hidden" name="current_verb" id="bugCurrentVerb" value="—">
+        <input type="hidden" name="current_tense" id="bugCurrentTense" value="—">
+        <input type="hidden" name="interface_language" id="bugInterfaceLanguage" value="en">
+        <input type="hidden" name="page_url" id="bugPageUrl" value="">
+        <input type="hidden" name="reported_at" id="bugReportedAt" value="">
+        <input type="text" name="_honey" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;opacity:0" value="">
         <label for="bugCategory">Type of issue</label>
-        <select id="bugCategory" class="custom-input">
+        <select id="bugCategory" name="category" class="custom-input">
           <option value="Conjugation">Conjugation</option>
           <option value="Translation or pronunciation">Translation or pronunciation</option>
           <option value="Design or controls">Design or controls</option>
           <option value="Other">Other</option>
         </select>
         <label for="bugDescription">What went wrong?</label>
-        <textarea id="bugDescription" class="custom-input" rows="4" maxlength="4000" placeholder="Describe the bug..." required></textarea>
+        <textarea id="bugDescription" name="message" class="custom-input" rows="4" maxlength="4000" placeholder="Describe the bug..." required></textarea>
         <label for="bugSteps">How can we reproduce it? (optional)</label>
-        <textarea id="bugSteps" class="custom-input" rows="3" maxlength="2500" placeholder="Steps to reproduce the problem..."></textarea>
-        <p class="report-note">Reports include the current verb, tense and app language. Sent to contact@studyzone.tech only when you press Send report.</p>
+        <textarea id="bugSteps" name="steps_to_reproduce" class="custom-input" rows="3" maxlength="2500" placeholder="Steps to reproduce the problem..."></textarea>
+        <p class="report-note">Reports include the verb, tense and interface language. Sending opens a FormSubmit confirmation page (no email login required).</p>
         <p id="bugReportStatus" class="bug-report-status" role="status" aria-live="polite"></p>
-        <button id="bugFallbackSubmit" class="bug-fallback-submit secondary" type="button" hidden>Send via secure form</button>
         <div class="dialog-buttons">
           <button id="copyBugReport" class="secondary" type="button">Copy report</button>
           <button id="emailBugReport" class="dialog-ok" type="submit">Send report</button>
