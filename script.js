@@ -2735,3 +2735,279 @@ UI_PATTERNS.unshift(
 
 setInterfaceLanguage(interfaceLocale);
 uiTranslateTree(document.body);
+
+
+// =========================================================
+// STUDY FEATURES: DAILY CHALLENGE, PROGRESS, STREAK, QUIZ,
+// SCORE SHARING, LOCAL LEADERBOARD, FRIEND CHALLENGES & PWA
+// =========================================================
+(function enableStudyFeatures(){
+  const storage={
+    get(key,fallback){try{const raw=localStorage.getItem(key);return raw===null?fallback:JSON.parse(raw)}catch{return fallback}},
+    set(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
+  };
+  const allVerbs=[...new Set(Object.values(database).flat())];
+  const totalVerbs=allVerbs.length;
+  const $=id=>document.getElementById(id);
+  const todayKey=()=>new Date().toLocaleDateString('en-CA');
+  let session={type:'practice',correct:0,total:0,checked:new Set(),started:false};
+  let featureLaunching=false;
+  const buildExercisesBeforeFeatures=buildExercises;
+  buildExercises=function(...args){
+    if(!featureLaunching)session={type:'practice',correct:0,total:0,checked:new Set(),started:true};
+    return buildExercisesBeforeFeatures.apply(this,args);
+  };
+  let pendingChallenge=null;
+  let deferredInstallPrompt=null;
+
+  function tr(s){return typeof uiTranslate==='function'?uiTranslate(s):s;}
+  function safeSetText(id,value){const el=$(id);if(el)el.textContent=value;}
+  function getCompleted(){return new Set(storage.get('gvt-completed-verbs',[]));}
+  function saveCompleted(set){storage.set('gvt-completed-verbs',[...set]);updateProgressUI();}
+  function markCompleted(verb){if(!verb)return;const set=getCompleted();set.add(verb);saveCompleted(set);}
+
+  function dateFromKey(k){const [y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d);}
+  function daysBetween(a,b){return Math.round((dateFromKey(b)-dateFromKey(a))/86400000);}
+  function recordPracticeDay(){
+    const today=todayKey();
+    let days=storage.get('gvt-practice-days',[]).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x));
+    if(!days.includes(today))days.push(today);
+    days=[...new Set(days)].sort().slice(-400);storage.set('gvt-practice-days',days);updateStreakUI();
+  }
+  function streakValue(){
+    const days=storage.get('gvt-practice-days',[]).sort();if(!days.length)return 0;
+    const today=todayKey();const yesterday=new Date();yesterday.setDate(yesterday.getDate()-1);const yKey=yesterday.toLocaleDateString('en-CA');
+    let cursor=days.includes(today)?today:days.includes(yKey)?yKey:null;if(!cursor)return 0;
+    let count=1;for(let i=days.indexOf(cursor)-1;i>=0;i--){if(daysBetween(days[i],cursor)===1){count++;cursor=days[i];}else break;}return count;
+  }
+  function progressPercentValue(){
+    const done=getCompleted().size;
+    return totalVerbs?Math.round(done/totalVerbs*100):0;
+  }
+  function progressMessage(percent){
+    if(percent>=100)return tr('Complete');
+    if(percent>=75)return tr('Almost there');
+    if(percent>=40)return tr('Great progress');
+    if(percent>0)return tr('Keep going');
+    return tr('Start your first verb');
+  }
+  function trackingGoalValue(){
+    let value=Number(storage.get('gvt-progress-goal',totalVerbs));
+    if(!Number.isFinite(value)||value<1)value=totalVerbs;
+    value=Math.min(totalVerbs,Math.max(1,Math.round(value)));
+    return value;
+  }
+  function updateGoalCalculator(){
+    const done=getCompleted().size;
+    const goal=trackingGoalValue();
+    const percent=goal?Math.round(done/goal*100):0;
+    const remaining=Math.max(0,goal-done);
+    const completedInput=$('trackingCompleted');if(completedInput)completedInput.value=done;
+    const goalInput=$('trackingGoal');if(goalInput&&document.activeElement!==goalInput)goalInput.value=goal;
+    safeSetText('goalProgressPercent',percent+'%');
+    safeSetText('goalRemaining',`${remaining} ${tr('verbs remaining to reach your goal')}`);
+  }
+  function updateProgressUI(){
+    const done=getCompleted().size;
+    const percent=progressPercentValue();
+    safeSetText('completedVerbCount',done);safeSetText('totalVerbCount',totalVerbs);
+    safeSetText('progressPercent',percent+'%');safeSetText('dashboardPercent',percent+'%');
+    safeSetText('remainingVerbCount',`${Math.max(0,totalVerbs-done)} ${tr('verbs remaining')}`);
+    safeSetText('progressMotivation',progressMessage(percent));
+    const fill=$('progressFill');if(fill)fill.style.width=percent+'%';
+    const ring=$('progressRing');if(ring)ring.style.setProperty('--progress-angle',(Math.min(100,Math.max(0,percent))*3.6)+'deg');
+    updateGoalCalculator();
+  }
+  function updateStreakUI(){safeSetText('streakCount',streakValue());}
+
+  function dailyVerb(){
+    const key=todayKey();let hash=0;for(const ch of key)hash=(hash*31+ch.charCodeAt(0))>>>0;return allVerbs[hash%allVerbs.length];
+  }
+  function updateDailyUI(){
+    const verb=dailyVerb();safeSetText('dailyVerbName',verb);
+    const saved=typeof storedMeaning==='function'?storedMeaning(verb,interfaceLocale):null;
+    const meaning=saved?.text||'';
+    safeSetText('dailyVerbMeaning',meaning||tr('One new verb every day.'));
+  }
+  function beginFeatureSession(type,verbs,tensesToUse){
+    selectedVerbs=[...new Set(verbs)].filter(v=>allVerbs.includes(v));
+    selectedTenses=[...new Set(tensesToUse)].filter(t=>tenses.includes(t));
+    if(!selectedVerbs.length)return;
+    if(!selectedTenses.length)selectedTenses=['Präsens'];
+    selectedPeople=[...people];
+    session={type,correct:0,total:0,checked:new Set(),started:true};
+    featureLaunching=true;
+    try{buildExercises();}finally{featureLaunching=false;}
+  }
+  $('startDailyChallenge')?.addEventListener('click',()=>beginFeatureSession('daily',[dailyVerb()],['Präsens','Präteritum','Perfekt']));
+  $('startRandomQuiz')?.addEventListener('click',()=>{
+    const shuffled=[...allVerbs].sort(()=>Math.random()-.5).slice(0,5);
+    beginFeatureSession('random',shuffled,['Präsens','Präteritum','Perfekt']);
+  });
+
+  function currentExerciseKey(){return [currentVerbIndex,currentTenseIndex,practiceVerbs[currentVerbIndex],selectedTenses[currentTenseIndex]].join('|');}
+  const beforeStudyCheck=checkCurrentVerb;
+  checkCurrentVerb=function(...args){
+    const actions=$('answerActions');
+    const pending=actions && !actions.classList.contains('hidden') && currentExercises.length>0;
+    const key=currentExerciseKey();
+    const out=beforeStudyCheck.apply(this,args);
+    if(pending && !session.checked.has(key)){
+      let correct=0;currentExercises.forEach(item=>{if(item.status.classList.contains('correct'))correct++;});
+      session.correct+=correct;session.total+=currentExercises.length;session.checked.add(key);recordPracticeDay();
+      $('scoreShareActions')?.classList.remove('hidden');
+    }
+    return out;
+  };
+  $('checkAll').onclick=checkCurrentVerb;
+
+  $('nextVerb')?.addEventListener('click',()=>{
+    const verb=practiceVerbs[currentVerbIndex];
+    const wasLastTense=currentTenseIndex===selectedTenses.length-1;
+    if(wasLastTense && session.checked.size)markCompleted(verb);
+    const wasFinal=wasLastTense && currentVerbIndex===practiceVerbs.length-1;
+    if(wasFinal && session.total>0){saveLeaderboardScore();session.started=false;setTimeout(renderLeaderboard,0);}
+    setTimeout(()=>{if(!$('page3').classList.contains('hidden'))$('scoreShareActions')?.classList.add('hidden');},0);
+  },true);
+
+  function scorePercent(){return session.total?Math.round(session.correct/session.total*100):0;}
+  function scoreText(){return `${session.correct}/${session.total} (${scorePercent()}%)`;}
+  function playerName(){return ($('leaderboardName')?.value||storage.get('gvt-player-name','Learner')||'Learner').trim().slice(0,24)||'Learner';}
+  function saveLeaderboardScore(){
+    const entries=storage.get('gvt-leaderboard',[]);entries.push({name:playerName(),correct:session.correct,total:session.total,percent:scorePercent(),type:session.type,date:new Date().toISOString()});
+    entries.sort((a,b)=>b.percent-a.percent||b.correct-a.correct||new Date(b.date)-new Date(a.date));storage.set('gvt-leaderboard',entries.slice(0,10));
+  }
+  function renderLeaderboard(){
+    const list=$('leaderboardList');if(!list)return;list.replaceChildren();
+    const entries=storage.get('gvt-leaderboard',[]);
+    if(!entries.length){const p=document.createElement('p');p.className='leaderboard-empty';p.textContent=tr('No scores yet. Finish a quiz to appear here.');list.appendChild(p);return;}
+    entries.forEach(entry=>{const li=document.createElement('li');const name=document.createElement('span');name.textContent=entry.name;const meta=document.createElement('small');meta.textContent=tr(entry.type==='random'?'Random quiz':entry.type==='daily'?'Daily challenge':'Practice');name.appendChild(document.createElement('br'));name.appendChild(meta);const score=document.createElement('span');score.className='leaderboard-score';score.textContent=`${entry.percent}% · ${entry.correct}/${entry.total}`;li.append(name,score);list.appendChild(li);});
+  }
+  const nameInput=$('leaderboardName');if(nameInput){nameInput.value=storage.get('gvt-player-name','');nameInput.addEventListener('change',()=>storage.set('gvt-player-name',nameInput.value.trim().slice(0,24)));}
+  const goalInput=$('trackingGoal');if(goalInput){
+    goalInput.max=String(totalVerbs);goalInput.value=trackingGoalValue();
+    const saveGoal=()=>{let value=Math.round(Number(goalInput.value)||totalVerbs);value=Math.min(totalVerbs,Math.max(1,value));storage.set('gvt-progress-goal',value);goalInput.value=value;updateGoalCalculator();};
+    goalInput.addEventListener('input',()=>{let value=Math.round(Number(goalInput.value)||1);value=Math.min(totalVerbs,Math.max(1,value));const done=getCompleted().size;safeSetText('goalProgressPercent',Math.round(done/value*100)+'%');safeSetText('goalRemaining',`${Math.max(0,value-done)} ${tr('verbs remaining to reach your goal')}`);});
+    goalInput.addEventListener('change',saveGoal);goalInput.addEventListener('blur',saveGoal);
+  }
+
+  async function sharePayload(title,text,url=location.href){
+    try{if(navigator.share){await navigator.share({title,text,url});return true;}const value=`${text}\n${url}`;if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(value);if(typeof showDialog==='function')showDialog(tr('Copied to clipboard.'));return true;}}catch(error){if(error?.name==='AbortError')return false;}
+    if(typeof showDialog==='function')showDialog(tr('Sharing is not available in this browser.'));return false;
+  }
+  $('shareScore')?.addEventListener('click',()=>sharePayload('German Verb Trainer',`${tr('My German verb score')}: ${scoreText()} · ${tr('Streak')}: ${streakValue()} 🔥`));
+  $('shareProgress')?.addEventListener('click',()=>sharePayload('German Verb Trainer',`${tr('I completed')} ${getCompleted().size}/${totalVerbs} ${tr('German verbs')} (${progressPercentValue()}%) · ${tr('Streak')}: ${streakValue()} 🔥`));
+
+  function challengeURL(){
+    const verbs=(practiceVerbs?.length?practiceVerbs:[...allVerbs].sort(()=>Math.random()-.5).slice(0,5)).slice(0,8);
+    const ts=(selectedTenses?.length?selectedTenses:['Präsens','Präteritum','Perfekt']).slice(0,4);
+    const u=new URL(location.href);u.search='';u.hash='';u.searchParams.set('challenge','1');u.searchParams.set('v',verbs.join(','));u.searchParams.set('t',ts.join(','));if(session.total)u.searchParams.set('target',String(scorePercent()));return u.toString();
+  }
+  async function challengeFriends(){const target=session.total?` ${tr('Can you beat')} ${scorePercent()}%?`:'';await sharePayload(tr('German verb challenge'),`${tr('I challenge you to this German verb quiz!')}${target}`,challengeURL());}
+  $('challengeFriends')?.addEventListener('click',challengeFriends);$('challengeFriendsHome')?.addEventListener('click',challengeFriends);
+
+  function parseChallenge(){
+    const q=new URLSearchParams(location.search);if(q.get('challenge')!=='1')return;
+    const verbs=(q.get('v')||'').split(',').filter(v=>allVerbs.includes(v)).slice(0,8);
+    const ts=(q.get('t')||'').split(',').filter(t=>tenses.includes(t)).slice(0,4);if(!verbs.length)return;
+    pendingChallenge={verbs,tenses:ts.length?ts:['Präsens'],target:Math.max(0,Math.min(100,Number(q.get('target'))||0))};
+    $('friendChallengeBanner')?.classList.remove('hidden');
+    safeSetText('friendChallengeText',pendingChallenge.target?`${tr('Beat the target score')}: ${pendingChallenge.target}%`:`${verbs.length} ${tr('verbs are waiting for you.')}`);
+  }
+  $('startFriendChallenge')?.addEventListener('click',()=>{if(pendingChallenge)beginFeatureSession('challenge',pendingChallenge.verbs,pendingChallenge.tenses);});
+
+  // Explicit dark-mode switch, synchronized with the existing theme selector.
+  const darkToggle=$('darkModeToggle'),themeSelect=$('themeSelect');
+  function syncDarkToggle(){if(darkToggle&&themeSelect)darkToggle.checked=themeSelect.value==='dark';}
+  if(darkToggle&&themeSelect){darkToggle.addEventListener('change',()=>{themeSelect.value=darkToggle.checked?'dark':'notebook';themeSelect.dispatchEvent(new Event('change',{bubbles:true}));});themeSelect.addEventListener('change',syncDarkToggle);syncDarkToggle();}
+
+  // PWA install prompt. The button appears only when the browser says installation is available.
+  window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();deferredInstallPrompt=event;const btn=$('installApp');if(btn)btn.hidden=false;});
+  $('installApp')?.addEventListener('click',async()=>{if(!deferredInstallPrompt)return;deferredInstallPrompt.prompt();await deferredInstallPrompt.userChoice;deferredInstallPrompt=null;$('installApp').hidden=true;});
+  window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;if($('installApp'))$('installApp').hidden=true;});
+  if('serviceWorker' in navigator && /^https?:$/.test(location.protocol))window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+
+  // Re-translate dynamic feature text when interface language changes.
+  const previousSetLanguage=setInterfaceLanguage;
+  setInterfaceLanguage=function(locale){const out=previousSetLanguage(locale);setTimeout(()=>{updateDailyUI();updateProgressUI();updateStreakUI();renderLeaderboard();if(pendingChallenge){safeSetText('friendChallengeText',pendingChallenge.target?`${tr('Beat the target score')}: ${pendingChallenge.target}%`:`${pendingChallenge.verbs.length} ${tr('verbs are waiting for you.')}`);}},0);return out;};
+
+  updateProgressUI();updateStreakUI();updateDailyUI();renderLeaderboard();parseChallenge();
+})();
+
+// Feature translations across every supported interface language.
+Object.assign(UI_LANGUAGES, {
+  'Dark mode':{ar:'الوضع الداكن',kab:'Askar aberkan',fr:'Mode sombre',de:'Dunkelmodus',es:'Modo oscuro',it:'Modalità scura',pt:'Modo escuro',tr:'Karanlık mod',nl:'Donkere modus',ru:'Тёмный режим'},
+  'Install app':{ar:'تثبيت التطبيق',kab:'Sebded asnas',fr:'Installer l’application',de:'App installieren',es:'Instalar aplicación',it:'Installa app',pt:'Instalar aplicativo',tr:'Uygulamayı yükle',nl:'App installeren',ru:'Установить приложение'},
+  'YOUR PROGRESS':{ar:'تقدمك',kab:'Asfari-ik',fr:'VOTRE PROGRESSION',de:'DEIN FORTSCHRITT',es:'TU PROGRESO',it:'I TUOI PROGRESSI',pt:'SEU PROGRESSO',tr:'İLERLEMEN',nl:'JE VOORTGANG',ru:'ВАШ ПРОГРЕСС'},
+  'Study dashboard':{ar:'لوحة التعلّم',kab:'Tafelwit n ulmad',fr:'Tableau de progression',de:'Lernübersicht',es:'Panel de estudio',it:'Dashboard di studio',pt:'Painel de estudo',tr:'Çalışma paneli',nl:'Studiedashboard',ru:'Панель обучения'},
+  'Daily Verb Challenge':{ar:'تحدي فعل اليوم',kab:'Amzizel n umyag n wass',fr:'Défi du verbe du jour',de:'Tägliche Verb-Challenge',es:'Reto diario de verbos',it:'Sfida verbo del giorno',pt:'Desafio diário de verbos',tr:'Günlük fiil görevi',nl:'Dagelijkse werkwoordchallenge',ru:'Глагол дня'},
+  'One new verb every day.':{ar:'فعل جديد كل يوم.',kab:'Amyag amaynut yal ass.',fr:'Un nouveau verbe chaque jour.',de:'Jeden Tag ein neues Verb.',es:'Un verbo nuevo cada día.',it:'Un nuovo verbo ogni giorno.',pt:'Um novo verbo por dia.',tr:'Her gün yeni bir fiil.',nl:'Elke dag een nieuw werkwoord.',ru:'Новый глагол каждый день.'},
+  'Start daily challenge':{ar:'ابدأ تحدي اليوم',kab:'Bdu amzizel n wass',fr:'Commencer le défi du jour',de:'Tages-Challenge starten',es:'Empezar reto diario',it:'Inizia sfida giornaliera',pt:'Iniciar desafio diário',tr:'Günlük görevi başlat',nl:'Start dagelijkse challenge',ru:'Начать ежедневное задание'},
+  'Progress tracker':{ar:'متتبع التقدم',kab:'Aḍfar n usfari',fr:'Suivi des progrès',de:'Fortschrittsanzeige',es:'Seguimiento del progreso',it:'Monitor progressi',pt:'Rastreador de progresso',tr:'İlerleme takibi',nl:'Voortgang bijhouden',ru:'Отслеживание прогресса'},
+  'Completed verbs':{ar:'الأفعال المكتملة',kab:'Imyagen ikemlen',fr:'Verbes terminés',de:'Abgeschlossene Verben',es:'Verbos completados',it:'Verbi completati',pt:'Verbos concluídos',tr:'Tamamlanan fiiller',nl:'Voltooide werkwoorden',ru:'Завершённые глаголы'},
+  'Streak counter':{ar:'عداد الاستمرارية',kab:'Amsiḍen n usdukel',fr:'Série quotidienne',de:'Streak-Zähler',es:'Contador de racha',it:'Contatore serie',pt:'Contador de sequência',tr:'Seri sayacı',nl:'Reeksenteller',ru:'Счётчик серии'},
+  'Daily practice streak':{ar:'سلسلة التدريب اليومية',kab:'Asdukel n ulmad n yal ass',fr:'Série de pratique quotidienne',de:'Tägliche Übungsserie',es:'Racha diaria de práctica',it:'Serie di pratica giornaliera',pt:'Sequência diária de prática',tr:'Günlük çalışma serisi',nl:'Dagelijkse oefenreeks',ru:'Серия ежедневных занятий'},
+  'Random quiz':{ar:'اختبار عشوائي',kab:'Akyad agacuran',fr:'Quiz aléatoire',de:'Zufallsquiz',es:'Quiz aleatorio',it:'Quiz casuale',pt:'Quiz aleatório',tr:'Rastgele test',nl:'Willekeurige quiz',ru:'Случайный тест'},
+  '5 random verbs':{ar:'5 أفعال عشوائية',kab:'5 imyagen igacuranen',fr:'5 verbes aléatoires',de:'5 zufällige Verben',es:'5 verbos aleatorios',it:'5 verbi casuali',pt:'5 verbos aleatórios',tr:'5 rastgele fiil',nl:'5 willekeurige werkwoorden',ru:'5 случайных глаголов'},
+  'Test your knowledge.':{ar:'اختبر معرفتك.',kab:'Sekyed tamusni-k.',fr:'Testez vos connaissances.',de:'Teste dein Wissen.',es:'Pon a prueba tus conocimientos.',it:'Metti alla prova le tue conoscenze.',pt:'Teste seus conhecimentos.',tr:'Bilgini test et.',nl:'Test je kennis.',ru:'Проверьте свои знания.'},
+  'Start random quiz':{ar:'ابدأ اختبارًا عشوائيًا',kab:'Bdu akyad agacuran',fr:'Commencer le quiz',de:'Zufallsquiz starten',es:'Empezar quiz aleatorio',it:'Avvia quiz casuale',pt:'Iniciar quiz aleatório',tr:'Rastgele testi başlat',nl:'Start willekeurige quiz',ru:'Начать случайный тест'},
+  'Share progress':{ar:'مشاركة التقدم',kab:'Bḍu asfari',fr:'Partager les progrès',de:'Fortschritt teilen',es:'Compartir progreso',it:'Condividi progressi',pt:'Compartilhar progresso',tr:'İlerlemeyi paylaş',nl:'Voortgang delen',ru:'Поделиться прогрессом'},
+  'Challenge friends':{ar:'تحدي الأصدقاء',kab:'Ɛreḍ imdukal',fr:'Défier des amis',de:'Freunde herausfordern',es:'Desafiar a amigos',it:'Sfida gli amici',pt:'Desafiar amigos',tr:'Arkadaşlarına meydan oku',nl:'Daag vrienden uit',ru:'Бросить вызов друзьям'},
+  'Friend challenge received':{ar:'وصل تحدي من صديق',kab:'Yewweḍ-d umzizel seg umeddakwel',fr:'Défi d’un ami reçu',de:'Challenge von einem Freund',es:'Reto de un amigo recibido',it:'Sfida di un amico ricevuta',pt:'Desafio de amigo recebido',tr:'Arkadaş meydan okuması geldi',nl:'Vriendenchallenge ontvangen',ru:'Получен вызов от друга'},
+  'A friend challenged you to a German verb quiz.':{ar:'تحداك صديق في اختبار للأفعال الألمانية.',kab:'Ameddakwel inek iɛreḍ-ik ɣer ukayad n yimyagen n talmanit.',fr:'Un ami vous défie à un quiz de verbes allemands.',de:'Ein Freund fordert dich zu einem deutschen Verbquiz heraus.',es:'Un amigo te ha retado a un quiz de verbos alemanes.',it:'Un amico ti ha sfidato a un quiz di verbi tedeschi.',pt:'Um amigo desafiou você para um quiz de verbos alemães.',tr:'Bir arkadaşın seni Almanca fiil testine davet etti.',nl:'Een vriend daagt je uit voor een Duitse werkwoordenquiz.',ru:'Друг бросил вам вызов в тесте по немецким глаголам.'},
+  'Start challenge':{ar:'ابدأ التحدي',kab:'Bdu amzizel',fr:'Commencer le défi',de:'Challenge starten',es:'Empezar reto',it:'Inizia sfida',pt:'Iniciar desafio',tr:'Meydan okumayı başlat',nl:'Start challenge',ru:'Начать вызов'},
+  'Beat the target score':{ar:'تجاوز النتيجة المستهدفة',kab:'Ɛeddi agmuḍ n iswi',fr:'Dépassez le score cible',de:'Schlage die Zielpunktzahl',es:'Supera la puntuación objetivo',it:'Supera il punteggio obiettivo',pt:'Supere a pontuação-alvo',tr:'Hedef puanı geç',nl:'Versla de doelscore',ru:'Побейте целевой результат'},
+  'verbs are waiting for you.':{ar:'أفعال بانتظارك.',kab:'imyagen ttraǧun-k.',fr:'verbes vous attendent.',de:'Verben warten auf dich.',es:'verbos te esperan.',it:'verbi ti aspettano.',pt:'verbos esperam por você.',tr:'fiil seni bekliyor.',nl:'werkwoorden wachten op je.',ru:'глаголов ждут вас.'},
+  'YOUR BEST RESULTS':{ar:'أفضل نتائجك',kab:'Igmaḍ-ik ifazen',fr:'VOS MEILLEURS RÉSULTATS',de:'DEINE BESTEN ERGEBNISSE',es:'TUS MEJORES RESULTADOS',it:'I TUOI RISULTATI MIGLIORI',pt:'SEUS MELHORES RESULTADOS',tr:'EN İYİ SONUÇLARIN',nl:'JE BESTE RESULTATEN',ru:'ВАШИ ЛУЧШИЕ РЕЗУЛЬТАТЫ'},
+  'Leaderboard':{ar:'لوحة الصدارة',kab:'Tafelwit n imezwura',fr:'Classement',de:'Bestenliste',es:'Clasificación',it:'Classifica',pt:'Ranking',tr:'Liderlik tablosu',nl:'Ranglijst',ru:'Таблица лидеров'},
+  'Saved on this device':{ar:'محفوظ على هذا الجهاز',kab:'Yettwasekles deg yibenk-a',fr:'Enregistré sur cet appareil',de:'Auf diesem Gerät gespeichert',es:'Guardado en este dispositivo',it:'Salvato su questo dispositivo',pt:'Salvo neste dispositivo',tr:'Bu cihazda kaydedilir',nl:'Op dit apparaat opgeslagen',ru:'Сохранено на этом устройстве'},
+  'Player name':{ar:'اسم اللاعب',kab:'Isem n umarir',fr:'Nom du joueur',de:'Spielername',es:'Nombre del jugador',it:'Nome giocatore',pt:'Nome do jogador',tr:'Oyuncu adı',nl:'Spelersnaam',ru:'Имя игрока'},
+  'Your name':{ar:'اسمك',kab:'Isem-ik',fr:'Votre nom',de:'Dein Name',es:'Tu nombre',it:'Il tuo nome',pt:'Seu nome',tr:'Adın',nl:'Je naam',ru:'Ваше имя'},
+  'No scores yet. Finish a quiz to appear here.':{ar:'لا توجد نتائج بعد. أكمل اختبارًا لتظهر هنا.',kab:'Ulac igmaḍ yakan. Fak akayad akken ad tbanḍ dagi.',fr:'Aucun score pour le moment. Terminez un quiz pour apparaître ici.',de:'Noch keine Ergebnisse. Beende ein Quiz, um hier zu erscheinen.',es:'Aún no hay resultados. Termina un quiz para aparecer aquí.',it:'Nessun punteggio. Completa un quiz per apparire qui.',pt:'Ainda não há pontuações. Conclua um quiz para aparecer aqui.',tr:'Henüz puan yok. Burada görünmek için bir testi bitir.',nl:'Nog geen scores. Rond een quiz af om hier te verschijnen.',ru:'Пока нет результатов. Завершите тест, чтобы появиться здесь.'},
+  'Practice':{ar:'تدريب',kab:'Aselmed',fr:'Pratique',de:'Übung',es:'Práctica',it:'Pratica',pt:'Prática',tr:'Pratik',nl:'Oefening',ru:'Практика'},
+  'Daily challenge':{ar:'التحدي اليومي',kab:'Amzizel n wass',fr:'Défi quotidien',de:'Tages-Challenge',es:'Reto diario',it:'Sfida giornaliera',pt:'Desafio diário',tr:'Günlük görev',nl:'Dagelijkse challenge',ru:'Ежедневное задание'},
+  'Share score':{ar:'مشاركة النتيجة',kab:'Bḍu agmuḍ',fr:'Partager le score',de:'Ergebnis teilen',es:'Compartir puntuación',it:'Condividi punteggio',pt:'Compartilhar pontuação',tr:'Puanı paylaş',nl:'Score delen',ru:'Поделиться результатом'},
+  'My German verb score':{ar:'نتيجتي في الأفعال الألمانية',kab:'Agmuḍ-iw n yimyagen n talmanit',fr:'Mon score en verbes allemands',de:'Mein Ergebnis bei deutschen Verben',es:'Mi puntuación de verbos alemanes',it:'Il mio punteggio sui verbi tedeschi',pt:'Minha pontuação de verbos alemães',tr:'Almanca fiil puanım',nl:'Mijn score voor Duitse werkwoorden',ru:'Мой результат по немецким глаголам'},
+  'Streak':{ar:'سلسلة',kab:'Asdukel',fr:'Série',de:'Serie',es:'Racha',it:'Serie',pt:'Sequência',tr:'Seri',nl:'Reeks',ru:'Серия'},
+  'I completed':{ar:'أكملت',kab:'Kemmleɣ',fr:'J’ai terminé',de:'Ich habe abgeschlossen',es:'He completado',it:'Ho completato',pt:'Concluí',tr:'Tamamladım',nl:'Ik voltooide',ru:'Я завершил(а)'},
+  'German verbs':{ar:'فعلًا ألمانيًا',kab:'imyagen n talmanit',fr:'verbes allemands',de:'deutsche Verben',es:'verbos alemanes',it:'verbi tedeschi',pt:'verbos alemães',tr:'Almanca fiil',nl:'Duitse werkwoorden',ru:'немецких глаголов'},
+  'German verb challenge':{ar:'تحدي الأفعال الألمانية',kab:'Amzizel n yimyagen n talmanit',fr:'Défi de verbes allemands',de:'Challenge für deutsche Verben',es:'Reto de verbos alemanes',it:'Sfida di verbi tedeschi',pt:'Desafio de verbos alemães',tr:'Almanca fiil meydan okuması',nl:'Duitse werkwoordenchallenge',ru:'Вызов по немецким глаголам'},
+  'I challenge you to this German verb quiz!':{ar:'أتحداك في اختبار الأفعال الألمانية هذا!',kab:'Ɛerḍeɣ-k ɣer ukayad-a n yimyagen n talmanit!',fr:'Je te défie à ce quiz de verbes allemands !',de:'Ich fordere dich zu diesem deutschen Verbquiz heraus!',es:'¡Te reto a este quiz de verbos alemanes!',it:'Ti sfido a questo quiz di verbi tedeschi!',pt:'Desafio você neste quiz de verbos alemães!',tr:'Seni bu Almanca fiil testine davet ediyorum!',nl:'Ik daag je uit voor deze Duitse werkwoordenquiz!',ru:'Я бросаю тебе вызов в этом тесте по немецким глаголам!'},
+  'Can you beat':{ar:'هل يمكنك تجاوز',kab:'Tzemreḍ ad tɛeddiḍ',fr:'Peux-tu dépasser',de:'Kannst du',es:'¿Puedes superar',it:'Riesci a superare',pt:'Você consegue superar',tr:'Geçebilir misin',nl:'Kun jij beter dan',ru:'Сможешь побить'},
+  'Copied to clipboard.':{ar:'تم النسخ إلى الحافظة.',kab:'Yettwanɣel ɣer tecfawt.',fr:'Copié dans le presse-papiers.',de:'In die Zwischenablage kopiert.',es:'Copiado al portapapeles.',it:'Copiato negli appunti.',pt:'Copiado para a área de transferência.',tr:'Panoya kopyalandı.',nl:'Gekopieerd naar klembord.',ru:'Скопировано в буфер обмена.'},
+  'Sharing is not available in this browser.':{ar:'المشاركة غير متاحة في هذا المتصفح.',kab:'Beṭṭu ur yermid ara deg iminig-a.',fr:'Le partage n’est pas disponible dans ce navigateur.',de:'Teilen ist in diesem Browser nicht verfügbar.',es:'Compartir no está disponible en este navegador.',it:'La condivisione non è disponibile in questo browser.',pt:'O compartilhamento não está disponível neste navegador.',tr:'Paylaşım bu tarayıcıda kullanılamıyor.',nl:'Delen is niet beschikbaar in deze browser.',ru:'Функция «Поделиться» недоступна в этом браузере.'},
+  'GERMAN VERB GUIDE':{ar:'دليل الأفعال الألمانية',kab:'Amnir n yimyagen n talmanit',fr:'GUIDE DES VERBES ALLEMANDS',de:'LEITFADEN FÜR DEUTSCHE VERBEN',es:'GUÍA DE VERBOS ALEMANES',it:'GUIDA AI VERBI TEDESCHI',pt:'GUIA DE VERBOS ALEMÃES',tr:'ALMANCA FİİL REHBERİ',nl:'GIDS DUITSE WERKWOORDEN',ru:'СПРАВОЧНИК ПО НЕМЕЦКИМ ГЛАГОЛАМ'},
+  'German conjugation from A1 to C2':{ar:'تصريف الأفعال الألمانية من A1 إلى C2',kab:'Asefti n yimyagen n talmanit seg A1 ar C2',fr:'Conjugaison allemande de A1 à C2',de:'Deutsche Konjugation von A1 bis C2',es:'Conjugación alemana de A1 a C2',it:'Coniugazione tedesca da A1 a C2',pt:'Conjugação alemã de A1 a C2',tr:'A1’den C2’ye Almanca çekim',nl:'Duitse vervoeging van A1 tot C2',ru:'Немецкое спряжение от A1 до C2'},
+  'Build your German verb skills step by step. Each CEFR level adds more vocabulary, tense control and complex verb patterns.':{ar:'طوّر مهاراتك في الأفعال الألمانية خطوة بخطوة. يضيف كل مستوى من CEFR مفردات أكثر وتحكمًا أفضل بالأزمنة وأنماط أفعال أكثر تعقيدًا.',kab:'Snerni tizemmar-ik deg yimyagen n talmanit s ubrid n ubrid. Yal aswir CEFR irennu amawal, asenqed n wakuden d tɣessa n yimyagen.',fr:'Développez vos verbes allemands étape par étape. Chaque niveau CECR ajoute du vocabulaire, des temps et des structures plus complexes.',de:'Baue deine deutschen Verbkenntnisse Schritt für Schritt aus. Jede GER-Stufe erweitert Wortschatz, Zeitformen und komplexe Verbmuster.',es:'Mejora los verbos alemanes paso a paso. Cada nivel del MCER añade vocabulario, tiempos y patrones más complejos.',it:'Sviluppa i verbi tedeschi passo dopo passo. Ogni livello QCER aggiunge lessico, tempi e schemi più complessi.',pt:'Desenvolva seus verbos alemães passo a passo. Cada nível do CEFR acrescenta vocabulário, tempos e padrões mais complexos.',tr:'Almanca fiil becerilerini adım adım geliştir. Her CEFR seviyesi daha fazla kelime, zaman ve karmaşık kalıp ekler.',nl:'Bouw je Duitse werkwoordkennis stap voor stap op. Elk ERK-niveau voegt woordenschat, tijden en complexere patronen toe.',ru:'Развивайте знание немецких глаголов шаг за шагом. Каждый уровень CEFR добавляет лексику, времена и более сложные модели.'},
+  'Master high-frequency verbs in the present tense and essential forms such as sein, haben and werden.':{ar:'أتقن الأفعال الأكثر استخدامًا في المضارع والأشكال الأساسية مثل sein وhaben وwerden.',kab:'Issin imyagen yettwasqedcen aṭas deg wurmir d talɣiwin tigejdanin am sein, haben d werden.',fr:'Maîtrisez les verbes fréquents au présent et les formes essentielles comme sein, haben et werden.',de:'Beherrsche häufige Verben im Präsens und Grundformen wie sein, haben und werden.',es:'Domina los verbos frecuentes en presente y formas esenciales como sein, haben y werden.',it:'Padroneggia i verbi frequenti al presente e forme essenziali come sein, haben e werden.',pt:'Domine verbos frequentes no presente e formas essenciais como sein, haben e werden.',tr:'Şimdiki zamanda sık kullanılan fiilleri ve sein, haben, werden gibi temel biçimleri öğren.',nl:'Beheers veelgebruikte werkwoorden in de tegenwoordige tijd en basisvormen zoals sein, haben en werden.',ru:'Освойте частотные глаголы в настоящем времени и основные формы sein, haben и werden.'},
+  'Practise common irregular verbs, Perfekt and verbs used in everyday conversations.':{ar:'تدرّب على الأفعال الشاذة الشائعة وزمن Perfekt والأفعال المستخدمة في المحادثات اليومية.',kab:'Selmed imyagen irulagen yettwasnen, Perfekt d yimyagen n umeslay n yal ass.',fr:'Pratiquez les verbes irréguliers courants, le Perfekt et le vocabulaire du quotidien.',de:'Übe häufige unregelmäßige Verben, das Perfekt und Verben aus Alltagsgesprächen.',es:'Practica verbos irregulares comunes, el Perfekt y verbos de conversación diaria.',it:'Esercitati con verbi irregolari comuni, Perfekt e verbi quotidiani.',pt:'Pratique verbos irregulares comuns, Perfekt e verbos do cotidiano.',tr:'Yaygın düzensiz fiilleri, Perfekt’i ve günlük konuşma fiillerini çalış.',nl:'Oefen veelvoorkomende onregelmatige werkwoorden, het Perfekt en dagelijkse werkwoorden.',ru:'Практикуйте распространённые неправильные глаголы, Perfekt и повседневную лексику.'},
+  'Work with separable verbs, narrative past forms and a wider range of irregular patterns.':{ar:'تدرّب على الأفعال المنفصلة وصيغ الماضي السردي ومجموعة أوسع من الأنماط الشاذة.',kab:'Xdem akked yimyagen yettemgaraden, talɣiwin n yizri d ugar n tɣessa tirulagin.',fr:'Travaillez les verbes séparables, le passé narratif et davantage de modèles irréguliers.',de:'Arbeite mit trennbaren Verben, Erzählformen der Vergangenheit und mehr unregelmäßigen Mustern.',es:'Trabaja verbos separables, formas narrativas del pasado y más patrones irregulares.',it:'Lavora con verbi separabili, passato narrativo e più schemi irregolari.',pt:'Trabalhe verbos separáveis, formas narrativas do passado e mais padrões irregulares.',tr:'Ayrılabilen fiiller, anlatı geçmişi ve daha geniş düzensiz kalıplarla çalış.',nl:'Werk met scheidbare werkwoorden, verhalende verleden tijd en meer onregelmatige patronen.',ru:'Работайте с отделяемыми глаголами, повествовательными формами прошлого и более широкими неправильными моделями.'},
+  'Strengthen formal and abstract verbs while controlling compound tenses and subordinate-clause vocabulary.':{ar:'عزّز الأفعال الرسمية والمجردة مع إتقان الأزمنة المركبة ومفردات الجمل التابعة.',kab:'Snerni imyagen unṣiben d imadwanen, s usenqed n wakuden uddisen d umawal n tefyirt tanaddawt.',fr:'Renforcez les verbes formels et abstraits, les temps composés et le vocabulaire des subordonnées.',de:'Festige formelle und abstrakte Verben sowie zusammengesetzte Zeiten und Nebensatzwortschatz.',es:'Refuerza verbos formales y abstractos, tiempos compuestos y vocabulario de subordinadas.',it:'Rafforza verbi formali e astratti, tempi composti e lessico delle subordinate.',pt:'Fortaleça verbos formais e abstratos, tempos compostos e vocabulário de orações subordinadas.',tr:'Resmî ve soyut fiilleri, birleşik zamanları ve yan cümle kelimelerini güçlendir.',nl:'Versterk formele en abstracte werkwoorden, samengestelde tijden en bijzinswoordenschat.',ru:'Укрепляйте формальные и абстрактные глаголы, сложные времена и лексику придаточных предложений.'},
+  'Practise precise academic and professional verbs, including complex prefixes and advanced mood forms.':{ar:'تدرّب على الأفعال الأكاديمية والمهنية الدقيقة، بما في ذلك السوابق المعقدة وصيغ الأسلوب المتقدمة.',kab:'Selmed imyagen n uselmed d uxeddim s telqayt, gar-asen izwiren uddisen d talɣiwin n tarrayt leqqayen.',fr:'Pratiquez des verbes académiques et professionnels précis, avec préfixes complexes et modes avancés.',de:'Übe präzise akademische und berufliche Verben mit komplexen Präfixen und fortgeschrittenen Modi.',es:'Practica verbos académicos y profesionales precisos, con prefijos complejos y modos avanzados.',it:'Esercitati con verbi accademici e professionali precisi, prefissi complessi e modi avanzati.',pt:'Pratique verbos acadêmicos e profissionais precisos, com prefixos complexos e modos avançados.',tr:'Karmaşık önekler ve ileri kiplerle akademik ve profesyonel fiilleri çalış.',nl:'Oefen precieze academische en professionele werkwoorden met complexe voorvoegsels en geavanceerde wijzen.',ru:'Практикуйте точные академические и профессиональные глаголы, сложные приставки и продвинутые наклонения.'},
+  'Refine rare, idiomatic and highly nuanced verbs used in sophisticated written and spoken German.':{ar:'طوّر الأفعال النادرة والاصطلاحية والدقيقة المستخدمة في الألمانية المتقدمة كتابةً وحديثًا.',kab:'Sleq yimyagen i d-yettbanen drus, wid n yinzi d wid yesɛan anamek leqqay deg talmanit tusligt.',fr:'Affinez les verbes rares, idiomatiques et nuancés de l’allemand soutenu écrit et oral.',de:'Verfeinere seltene, idiomatische und stark nuancierte Verben in anspruchsvollem Deutsch.',es:'Perfecciona verbos raros, idiomáticos y muy matizados del alemán avanzado.',it:'Affina verbi rari, idiomatici e molto sfumati del tedesco avanzato.',pt:'Aprimore verbos raros, idiomáticos e muito sutis do alemão avançado.',tr:'İleri düzey yazılı ve sözlü Almancadaki nadir, deyimsel ve ince anlamlı fiilleri geliştir.',nl:'Verfijn zeldzame, idiomatische en genuanceerde werkwoorden in gevorderd Duits.',ru:'Оттачивайте редкие, идиоматические и тонко оттенённые глаголы продвинутого немецкого.'},
+  'Example:':{ar:'مثال:',kab:'Amedya:',fr:'Exemple :',de:'Beispiel:',es:'Ejemplo:',it:'Esempio:',pt:'Exemplo:',tr:'Örnek:',nl:'Voorbeeld:',ru:'Пример:'}
+});
+setInterfaceLanguage(interfaceLocale);
+uiTranslateTree(document.body);
+
+
+// Organized dashboard + progress calculator translations.
+Object.assign(UI_LANGUAGES, {
+  'complete':{ar:'مكتمل',kab:'ikemmel',fr:'terminé',de:'erledigt',es:'completado',it:'completato',pt:'concluído',tr:'tamamlandı',nl:'voltooid',ru:'выполнено'},
+  'Percentage calculator':{ar:'حاسبة النسبة المئوية',kab:'Amsiḍen n tfesna',fr:'Calculateur de pourcentage',de:'Prozentrechner',es:'Calculadora de porcentaje',it:'Calcolatore percentuale',pt:'Calculadora de porcentagem',tr:'Yüzde hesaplayıcı',nl:'Percentagecalculator',ru:'Калькулятор процентов'},
+  'Track your progress toward a custom verb goal.':{ar:'تتبّع تقدمك نحو هدف مخصص لعدد الأفعال.',kab:'Ḍfer asfari-ik ɣer yiswi n yimyagen i tferneḍ.',fr:'Suivez votre progression vers un objectif personnalisé de verbes.',de:'Verfolge deinen Fortschritt zu einem eigenen Verbziel.',es:'Sigue tu progreso hacia un objetivo personalizado de verbos.',it:'Segui i progressi verso un obiettivo personalizzato di verbi.',pt:'Acompanhe seu progresso rumo a uma meta personalizada de verbos.',tr:'Özel fiil hedefine doğru ilerlemeni takip et.',nl:'Volg je voortgang naar een persoonlijk werkwoorddoel.',ru:'Отслеживайте прогресс к своей цели по глаголам.'},
+  'Completed':{ar:'مكتمل',kab:'Ikemmel',fr:'Terminés',de:'Erledigt',es:'Completados',it:'Completati',pt:'Concluídos',tr:'Tamamlandı',nl:'Voltooid',ru:'Выполнено'},
+  'Goal verbs':{ar:'هدف الأفعال',kab:'Iswi n yimyagen',fr:'Objectif de verbes',de:'Verbziel',es:'Meta de verbos',it:'Obiettivo verbi',pt:'Meta de verbos',tr:'Fiil hedefi',nl:'Werkwoorddoel',ru:'Цель по глаголам'},
+  'verbs remaining':{ar:'فعل متبقٍ',kab:'imyagen i d-yeqqimen',fr:'verbes restants',de:'Verben übrig',es:'verbos restantes',it:'verbi rimanenti',pt:'verbos restantes',tr:'fiil kaldı',nl:'werkwoorden resterend',ru:'глаголов осталось'},
+  'verbs remaining to reach your goal':{ar:'فعل متبقٍ للوصول إلى هدفك',kab:'imyagen i d-yeqqimen akken ad tawḍeḍ ɣer yiswi-k',fr:'verbes restants pour atteindre votre objectif',de:'Verben bis zu deinem Ziel',es:'verbos restantes para alcanzar tu meta',it:'verbi rimanenti per raggiungere il tuo obiettivo',pt:'verbos restantes para atingir sua meta',tr:'hedefine ulaşmak için fiil kaldı',nl:'werkwoorden resterend tot je doel',ru:'глаголов осталось до вашей цели'},
+  'Keep going':{ar:'استمر',kab:'Kemmel',fr:'Continuez',de:'Weiter so',es:'Sigue así',it:'Continua così',pt:'Continue',tr:'Devam et',nl:'Ga door',ru:'Продолжайте'},
+  'Great progress':{ar:'تقدم رائع',kab:'Asfari igerrzen',fr:'Très beaux progrès',de:'Toller Fortschritt',es:'Gran progreso',it:'Ottimi progressi',pt:'Ótimo progresso',tr:'Harika ilerleme',nl:'Goede voortgang',ru:'Отличный прогресс'},
+  'Almost there':{ar:'أوشكت على الوصول',kab:'Qrib ad tawḍeḍ',fr:'Presque terminé',de:'Fast geschafft',es:'Ya casi está',it:'Ci sei quasi',pt:'Quase lá',tr:'Neredeyse bitti',nl:'Bijna klaar',ru:'Почти готово'},
+  'Complete':{ar:'مكتمل',kab:'Ikemmel',fr:'Terminé',de:'Abgeschlossen',es:'Completado',it:'Completato',pt:'Concluído',tr:'Tamamlandı',nl:'Voltooid',ru:'Завершено'},
+  'Start your first verb':{ar:'ابدأ بأول فعل',kab:'Bdu s umyag amezwaru',fr:'Commencez votre premier verbe',de:'Starte mit deinem ersten Verb',es:'Empieza tu primer verbo',it:'Inizia il tuo primo verbo',pt:'Comece seu primeiro verbo',tr:'İlk fiilinle başla',nl:'Start met je eerste werkwoord',ru:'Начните с первого глагола'},
+  'days':{ar:'أيام',kab:'ussan',fr:'jours',de:'Tage',es:'días',it:'giorni',pt:'dias',tr:'gün',nl:'dagen',ru:'дней'},
+  'Share your current percentage':{ar:'شارك نسبة تقدمك الحالية',kab:'Bḍu tafesna n usfari-ik',fr:'Partagez votre pourcentage actuel',de:'Teile deinen aktuellen Prozentsatz',es:'Comparte tu porcentaje actual',it:'Condividi la tua percentuale attuale',pt:'Compartilhe sua porcentagem atual',tr:'Mevcut yüzdesini paylaş',nl:'Deel je huidige percentage',ru:'Поделитесь текущим процентом'},
+  'Send a quiz link':{ar:'أرسل رابط اختبار',kab:'Azen aseɣwen n ukayad',fr:'Envoyer un lien de quiz',de:'Quiz-Link senden',es:'Enviar un enlace de quiz',it:'Invia un link al quiz',pt:'Enviar um link de quiz',tr:'Test bağlantısı gönder',nl:'Stuur een quizlink',ru:'Отправить ссылку на тест'}
+});
+setInterfaceLanguage(interfaceLocale);
+uiTranslateTree(document.body);
