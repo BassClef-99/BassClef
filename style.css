@@ -1423,3 +1423,11 @@ html{scrollbar-gutter:stable}
   outline:2px solid #9ccac0!important;
   outline-offset:2px;
 }
+
+/* Advertisement units */
+.ad-units{width:100%;max-width:1100px;margin:24px auto 8px;padding:0 16px;display:flex;flex-wrap:wrap;justify-content:center;align-items:flex-start;gap:16px;box-sizing:border-box;overflow:hidden}
+.ad-unit{max-width:100%;overflow:hidden;text-align:center}
+.ad-link{flex-basis:100%;text-align:center;margin:4px 0 0;font-size:.82rem}
+.ad-link a{color:var(--muted,inherit)}
+@media(max-width:767px){.ad-728x90,.ad-468x60,.ad-160x600,.ad-160x300,.ad-300x250{display:none}.ad-units{margin-top:16px;padding:0 8px}}
+@media(min-width:768px){.ad-320x50{display:none}}

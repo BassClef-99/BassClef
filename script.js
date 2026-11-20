@@ -2925,7 +2925,7 @@ uiTranslateTree(document.body);
   window.addEventListener('beforeinstallprompt',event=>{event.preventDefault();deferredInstallPrompt=event;const btn=$('installApp');if(btn)btn.hidden=false;});
   $('installApp')?.addEventListener('click',async()=>{if(!deferredInstallPrompt)return;deferredInstallPrompt.prompt();await deferredInstallPrompt.userChoice;deferredInstallPrompt=null;$('installApp').hidden=true;});
   window.addEventListener('appinstalled',()=>{deferredInstallPrompt=null;if($('installApp'))$('installApp').hidden=true;});
-  if('serviceWorker' in navigator && /^https?:$/.test(location.protocol))window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+  if('serviceWorker' in navigator && /^https?:$/.test(location.protocol))window.addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));
 
   // Re-translate dynamic feature text when interface language changes.
   const previousSetLanguage=setInterfaceLanguage;
